@@ -211,13 +211,11 @@ class PurchaseReconciliationTool(Document):
         )
 
     @frappe.whitelist()
-    def link_documents(self, purchase_invoice_name, inward_supply_name, category):
+    def link_documents(self, purchase_invoice_name, inward_supply_name, link_doctype):
         frappe.has_permission("Purchase Reconciliation Tool", "write", throw=True)
 
         if not purchase_invoice_name or not inward_supply_name:
             return
-
-        GSTR2 = frappe.qb.DocType("GST Inward Supply")
 
         purchases = []
         inward_supplies = []
@@ -229,29 +227,23 @@ class PurchaseReconciliationTool(Document):
             self._unlink_documents((inward_supply_name,))
             purchases.append(isup_linked_with)
 
-        link_doctype = (
-            "Bill of Entry" if category in IMPORT_CATEGORY else "Purchase Invoice"
-        )
-
-        if (
-            pur_linked_with := frappe.qb.from_(GSTR2)
-            .select("name")
-            .where(GSTR2.link_doctype == link_doctype)
-            .where(GSTR2.link_name == purchase_invoice_name)
-            .run()
+        link_doc = {
+            "link_doctype": link_doctype,
+            "link_name": purchase_invoice_name,
+        }
+        if pur_linked_with := frappe.db.get_all(
+            "GST Inward Supply", link_doc, pluck="name"
         ):
-            self._unlink_documents((pur_linked_with,))
+            self._unlink_documents((pur_linked_with))
             inward_supplies.append(pur_linked_with)
+
+        link_doc["match_status"] = "Manual Match"
 
         # link documents
         frappe.db.set_value(
             "GST Inward Supply",
             inward_supply_name,
-            {
-                "link_doctype": link_doctype,
-                "link_name": purchase_invoice_name,
-                "match_status": "Manual Match",
-            },
+            link_doc,
         )
         purchases.append(purchase_invoice_name)
         inward_supplies.append(inward_supply_name)
@@ -298,7 +290,6 @@ class PurchaseReconciliationTool(Document):
             .run()
         )
 
-    # TODO: Include boe
     @frappe.whitelist()
     def apply_action(self, data, action):
         frappe.has_permission("Purchase Reconciliation Tool", "write", throw=True)
@@ -318,6 +309,7 @@ class PurchaseReconciliationTool(Document):
                 purchases.append(doc.get("purchase_invoice_name"))
 
         PI = frappe.qb.DocType("Purchase Invoice")
+        BOE = frappe.qb.DocType("Bill of Entry")
         GSTR2 = frappe.qb.DocType("GST Inward Supply")
 
         if inward_supplies:
@@ -335,7 +327,14 @@ class PurchaseReconciliationTool(Document):
                 .where(PI.name.isin(purchases))
                 .run()
             )
+            (
+                frappe.qb.update(BOE)
+                .set("ignore_reconciliation", 1)
+                .where(BOE.name.isin(purchases))
+                .run()
+            )
 
+    # TODO: support multiple doctypes
     @frappe.whitelist()
     def get_link_options(self, doctype, filters):
         frappe.has_permission("Purchase Reconciliation Tool", "write", throw=True)

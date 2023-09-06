@@ -49,7 +49,7 @@ frappe.ui.form.on("Purchase Reconciliation Tool", {
                 () => unlink_documents(frm),
                 __("Actions")
             );
-            frm.add_custom_button(__("dropdown-divider"), () => { }, __("Actions"));
+            frm.add_custom_button(__("dropdown-divider"), () => {}, __("Actions"));
         }
         ["Accept My Values", "Accept Supplier Values", "Pending", "Ignore"].forEach(
             action =>
@@ -866,6 +866,7 @@ class DetailViewDialog {
         this.dialog.$wrapper.find(".modal-footer").css("flex-direction", "inherit");
     }
 
+    //TODO Add support for multiple doctype
     _apply_custom_action(action) {
         if (action == "Unlink") {
             unlink_documents(this.frm, [this.row]);
@@ -874,6 +875,7 @@ class DetailViewDialog {
                 this.frm,
                 this.data.purchase_invoice_name,
                 this.data.inward_supply_name,
+                this.missing_doctype,
                 true
             );
         } else if (action == "Create") {
@@ -1317,6 +1319,7 @@ purchase_reconciliation_tool.link_documents = async function (
     frm,
     purchase_invoice_name,
     inward_supply_name,
+    link_doctype,
     alert = true
 ) {
     if (frm.get_active_tab()?.df.fieldname != "invoice_tab") return;
@@ -1325,6 +1328,7 @@ purchase_reconciliation_tool.link_documents = async function (
     const { message: r } = await frm.call("link_documents", {
         purchase_invoice_name,
         inward_supply_name,
+        link_doctype,
     });
     const reco_tool = frm.purchase_reconciliation_tool;
     const new_data = reco_tool.data.filter(

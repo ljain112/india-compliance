@@ -8,6 +8,7 @@ from rapidfuzz import fuzz, process
 
 import frappe
 from frappe.query_builder import Case
+from frappe.query_builder.custom import ConstantColumn
 from frappe.query_builder.functions import Abs, Sum
 from frappe.utils import add_months, getdate, rounded
 
@@ -309,7 +310,7 @@ class InwardSupply:
             .where(self.company_gstin == self.GSTR2.company_gstin)
             .where(self.GSTR2.match_status != "Amended")
             .groupby(self.GSTR2_ITEM.parent)
-            .select(*fields)
+            .select(*fields, ConstantColumn("GST Inward Supply").as_("doctype"))
         )
         return query
 
@@ -426,7 +427,11 @@ class PurchaseInvoice:
             .where(self.PI.gst_category != "Registered Composition")
             .where(self.PI.supplier_gstin.isnotnull())
             .groupby(self.PI.name)
-            .select(*fields, pi_item.taxable_value)
+            .select(
+                *fields,
+                pi_item.taxable_value,
+                ConstantColumn("Purchase Invoice").as_("doctype"),
+            )
         )
 
     def get_fields(self, additional_fields=None, is_return=False):
@@ -550,9 +555,8 @@ class BillOfEntry:
             .on(self.BOE.purchase_invoice == self.PI.name)
             .where(self.company_gstin == self.BOE.company_gstin)
             .where(self.BOE.docstatus == 1)
-            # Filter for B2B transactions where match can be made
             .groupby(self.BOE.name)
-            .select(*fields)
+            .select(*fields, ConstantColumn("Bill of Entry").as_("doctype"))
         )
 
     def get_fields(self, additional_fields=None):
@@ -568,35 +572,33 @@ class BillOfEntry:
             self.BOE.bill_of_entry_no.as_("bill_no"),
             self.BOE.total_taxable_value.as_("taxable_value"),
             self.BOE.bill_of_entry_date.as_("bill_date"),
-            Case()
-            .when(self.PI.gst_category == "SEZ", self.PI.supplier_gstin)
-            .else_("")
-            .as_("supplier_gstin"),
-            Case()
-            .when(self.PI.gst_category == "SEZ", self.PI.place_of_supply)
-            .else_("")
-            .as_("place_of_supply"),
-            Case()
-            .when(self.PI.gst_category == "SEZ", self.PI.is_reverse_charge)
-            .else_("")
-            .as_("is_reverse_charge"),
+            self.BOE.posting_date,
             *tax_fields,
         ]
 
-        # Standard fields to match with Purchase Invoice
+        # In IMPGSEZ supplier details are avaialble in 2A
+        purchase_fields = [
+            "supplier_gstin",
+            "place_of_supply",
+            "is_reverse_charge",
+            "gst_category",
+            "supplier_name",
+        ]
+
+        for field in purchase_fields:
+            fields.append(
+                Case()
+                .when(self.PI.gst_category == "SEZ", getattr(self.PI, field))
+                .else_("")
+                .as_(field)
+            )
+
+        # Add only boe fields
         if additional_fields:
             boe_fields = frappe.db.get_table_columns("Bill of Entry")
             for field in additional_fields:
                 if field in boe_fields:
                     fields.append(getattr(self.BOE, field))
-
-                else:
-                    fields.append(
-                        Case()
-                        .when(self.PI.gst_category == "SEZ", getattr(self.PI, field))
-                        .else_("")
-                        .as_(field)
-                    )
 
         return fields
 
@@ -729,7 +731,7 @@ class Reconciler(BaseReconciliation):
         inward_supplies = self.get_unmatched_inward_supply(category, amended_category)
         self.reconcile_for_rules(GSTINRules, purchases, inward_supplies, category)
 
-        # In case of IMPG
+        # In case of IMPG GST in not available in 2A. So skip PAN level matching.
         if category == "IMPG":
             return
 
@@ -762,10 +764,7 @@ class Reconciler(BaseReconciliation):
         """
 
         for supplier_gstin in purchases:
-            if (
-                not inward_supplies.get(supplier_gstin)
-                and category not in IMPORT_CATEGORY
-            ):
+            if not inward_supplies.get(supplier_gstin) and category != "IMPG":
                 continue
 
             summary_diff = {}
@@ -795,7 +794,10 @@ class Reconciler(BaseReconciliation):
                         continue
 
                     self.update_matching_doc(
-                        match_status, purchase.name, inward_supply.name, category
+                        match_status,
+                        purchase.name,
+                        inward_supply.name,
+                        purchase.doctype,
                     )
 
                     # Remove from current data to ensure matching is done only once.
@@ -891,16 +893,12 @@ class Reconciler(BaseReconciliation):
         return abs(purchase.get(field, 0) - inward_supply.get(field, 0))
 
     def update_matching_doc(
-        self, match_status, purchase_invoice_name, inward_supply_name, category
+        self, match_status, purchase_invoice_name, inward_supply_name, link_doctype
     ):
         """Update matching doc for records."""
 
         if match_status == "Residual Match":
             match_status = "Mismatch"
-
-        link_doctype = (
-            "Bill of Entry" if category in IMPORT_CATEGORY else "Purchase Invoice"
-        )
 
         inward_supply_fields = {
             "match_status": match_status,
@@ -1047,18 +1045,21 @@ class ReconciledData(BaseReconciliation):
                 elif doc.link_doctype == "Bill of Entry":
                     boe_names.add(doc.link_name)
 
-        purchases = super().get_all_purchase_invoice(
-            purchase_fields, purchase_names, only_names
+        purchases = (
+            super().get_all_purchase_invoice(
+                purchase_fields, purchase_names, only_names
+            )
+            or []
         )
 
-        bill_of_entries = super().get_all_bill_of_entry(
-            purchase_fields, boe_names, only_names
+        bill_of_entries = (
+            super().get_all_bill_of_entry(purchase_fields, boe_names, only_names) or []
         )
+
+        if not purchases and not bill_of_entries:
+            return {}
 
         purchases.extend(bill_of_entries)
-
-        if not purchases:
-            return {}
 
         return {doc.name: doc for doc in purchases}
 

@@ -1,4 +1,5 @@
 import frappe
+from frappe.utils import flt
 from erpnext.setup.setup_wizard.operations.taxes_setup import from_detailed_data
 
 from india_compliance.gst_india.utils import get_data_file_path
@@ -57,12 +58,44 @@ def make_default_gst_expense_accounts(company):
 
 
 @frappe.whitelist()
-def make_default_tax_templates(company: str):
+def make_default_tax_templates(company: str, tax_rate: int | str = None):
     frappe.has_permission("Company", ptype="write", doc=company, throw=True)
 
-    default_taxes = frappe.get_file_json(get_data_file_path("tax_defaults.json"))
+    default_taxes = get_default_taxes(tax_rate)
+
     from_detailed_data(company, default_taxes)
     update_gst_settings(company)
+
+
+def get_default_taxes(tax_rate=None):
+    default_taxes = frappe.get_file_json(get_data_file_path("tax_defaults.json"))
+    if tax_rate and flt(tax_rate) != 18:
+        default_taxes = get_default_taxes_for_rate(default_taxes, flt(tax_rate))
+
+    return default_taxes
+
+
+def get_default_taxes_for_rate(default_taxes, tax_rate):
+    """
+    Convert 18% to defined tax_rate
+    """
+    sales_tax_templates = default_taxes.get("*").get("sales_tax_templates")
+    purchase_tax_temlates = default_taxes.get("*").get("purchase_tax_templates")
+
+    templates_to_update = sales_tax_templates + purchase_tax_temlates
+
+    inter_state_rate = flt(tax_rate)
+    intra_state_rate = flt(tax_rate / 2)
+
+    for tax_row in templates_to_update:
+        for row in tax_row.taxes:
+            rate = row.account_head.get("tax_rate")
+            if rate == 18:
+                row.account_head.tax_rate = inter_state_rate
+            else:
+                row.account_head.tax_rate = intra_state_rate
+
+    return default_taxes
 
 
 def update_gst_settings(company):

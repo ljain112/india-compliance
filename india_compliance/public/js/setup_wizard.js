@@ -12,9 +12,28 @@ function update_erpnext_slides_settings() {
         label: __("Company GSTIN"),
     };
 
+
     const _index = can_fetch_gstin_info() ? 0 : 1;
 
     slide.fields.splice(_index, 0, company_gstin_field);
+
+    const taxes = {
+        "5": "GST 5%",
+        "12": "GST 12%",
+        "18": "GST 18%",
+        "28": "GST 28%"
+    }
+    slide.fields.push({
+        fieldname: "default_tax_rate",
+        fieldtype: "Autocomplete",
+        label: "Default Tax Rate",
+        options: Object.entries(taxes).map(([value, label]) => ({
+            value,
+            label
+        })),
+        default: "18"
+
+    })
 
     slide.fields.push({
         fieldname: "enable_audit_trail",

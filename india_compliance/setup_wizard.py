@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 
 from india_compliance.audit_trail.utils import enable_audit_trail
+from india_compliance.gst_india.overrides.company import make_default_tax_templates
 from india_compliance.gst_india.overrides.party import validate_pan
 from india_compliance.gst_india.utils import guess_gst_category, is_api_enabled
 from india_compliance.gst_india.utils.gstin_info import get_gstin_info
@@ -33,6 +34,17 @@ def get_setup_wizard_stages(params=None):
                     "fn": setup_company_gstin_details,
                     "args": params,
                     "fail_msg": _("Failed to Update Company GSTIN"),
+                }
+            ],
+        },
+        {
+            "status": _("Wrapping up"),
+            "fail_msg": _("Failed to Create Default Tax Template"),
+            "tasks": [
+                {
+                    "fn": create_default_tax_template,
+                    "args": params,
+                    "fail_msg": _("Create Default Tax Template"),
                 }
             ],
         },
@@ -96,3 +108,10 @@ def can_fetch_gstin_info():
     return is_api_enabled() and not frappe.get_cached_value(
         "GST Settings", None, "sandbox_mode"
     )
+
+
+def create_default_tax_template(params):
+    if not (params.company_name and frappe.db.exists("Company", params.company_name)):
+        return
+
+    make_default_tax_templates(params.company, params.default_tax_rate)

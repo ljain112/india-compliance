@@ -330,6 +330,7 @@ def update_gst_details_for_transactions(companies):
                 )
 
                 build_query_and_update_gst_details(gst_details, doctype)
+                frappe.db.commit()
 
 
 def get_docs_with_gst_accounts(doctype, gst_accounts):

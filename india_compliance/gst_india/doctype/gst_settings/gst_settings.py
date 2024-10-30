@@ -165,6 +165,38 @@ class GSTSettings(Document):
 
             account_types.append(row.account_type)
 
+        # In Item Tax Template only accounts with specific account_type are allowed.
+        invalid_accounts = frappe.db.get_all(
+            "Account",
+            filters={
+                "name": ["in", account_list],
+                "account_type": [
+                    "not in",
+                    [
+                        "Tax",
+                        "Chargeable",
+                        "Income Account",
+                        "Expense Account",
+                        "Expenses Included In Valuation",
+                    ],
+                ],
+            },
+            pluck="name",
+        )
+
+        if invalid_accounts:
+
+            frappe.throw(
+                _(
+                    "GST Accounts must be of type Tax or Income or Expense or Chargeable."
+                    "<br>Following are the invalid accounts:"
+                )
+                + "<br><br><ul><li>"
+                + "</li><li>".join(invalid_accounts)
+                + "</li></ul>",
+                title=_("Invalid Account"),
+            )
+
     def update_custom_fields(self):
         if self.has_value_changed("enable_e_waybill"):
             toggle_custom_fields(E_WAYBILL_FIELDS, self.enable_e_waybill)

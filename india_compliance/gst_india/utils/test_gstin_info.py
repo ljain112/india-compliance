@@ -5,10 +5,7 @@ import responses
 from responses import matchers
 
 import frappe
-<<<<<<< HEAD
-=======
-from frappe.tests import IntegrationTestCase, change_settings
->>>>>>> 61e10af3 (fix: handle `Invalid GSTIN` error (#2645))
+from frappe.tests.utils import FrappeTestCase, change_settings
 
 from india_compliance.gst_india.utils.gstin_info import get_gstin_info
 
@@ -198,7 +195,7 @@ class TestGstinInfo(unittest.TestCase):
         )
 
 
-class TestGstinInvalidInfo(IntegrationTestCase):
+class TestGstinInvalidInfo(FrappeTestCase):
     @responses.activate
     @change_settings("GST Settings", {"validate_gstin_status": 1, "sandbox_mode": 0})
     def test_invalid_gstin(self):

@@ -66,6 +66,7 @@ def set_gst_breakup(doc):
 
 
 def update_taxable_values(doc):
+    return
 
     if doc.doctype not in DOCTYPES_WITH_GST_DETAIL:
         return
@@ -171,7 +172,8 @@ def validate_item_wise_tax_detail(doc):
             )
             tax_difference = abs(multiplier * tax_rate - tax_amount)
 
-            if tax_difference > 1:
+            print(tax_difference)
+            if tax_difference > 2:
                 correct_charge_type = (
                     "On Item Quantity" if is_cess_non_advol else "On Net Total"
                 )

@@ -66,9 +66,11 @@ def set_gst_breakup(doc):
 
 
 def update_taxable_values(doc):
-    return
 
     if doc.doctype not in DOCTYPES_WITH_GST_DETAIL:
+        return
+
+    if frappe.flags.do_not_update_taxable_value:
         return
 
     total_charges = 0
@@ -132,6 +134,9 @@ def validate_item_wise_tax_detail(doc):
     if doc.doctype not in DOCTYPES_WITH_GST_DETAIL:
         return
 
+    if frappe.flags.ignore_tax_validation:
+        return
+
     item_taxable_values = defaultdict(float)
     item_qty_map = defaultdict(float)
 
@@ -172,8 +177,7 @@ def validate_item_wise_tax_detail(doc):
             )
             tax_difference = abs(multiplier * tax_rate - tax_amount)
 
-            print(tax_difference)
-            if tax_difference > 2:
+            if tax_difference > 1:
                 correct_charge_type = (
                     "On Item Quantity" if is_cess_non_advol else "On Net Total"
                 )

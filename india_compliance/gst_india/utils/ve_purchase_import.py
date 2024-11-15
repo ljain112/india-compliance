@@ -1,13 +1,11 @@
-import frappe
-from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
-    get_file,
-)
-from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
-    generate_data_from_excel,
-)
-from frappe.utils import flt
 import json
 
+import frappe
+from frappe.utils import flt
+from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
+    generate_data_from_excel,
+    get_file,
+)
 
 ACCOUNT_HEAD_MAPPING = {"cgst": "Input Tax CGST - VE", "sgst": "Input Tax SGST - VE"}
 
@@ -162,7 +160,7 @@ def update_round_off(doc, data):
 
     diff = doc.grand_total - total
 
-    if diff:
+    if -2 <= diff <= 2:
         doc.append(
             "taxes",
             {
@@ -175,6 +173,9 @@ def update_round_off(doc, data):
                 "tax_amount": diff,
             },
         )
-
-    doc.save()
-    doc.submit()
+        frappe.flags.ignore_tax_validation = True
+        doc.save()
+        doc.submit()
+    else:
+        # Raise an error if the round off is greater than the allowed range
+        frappe.throw("Round off is greater than 2")

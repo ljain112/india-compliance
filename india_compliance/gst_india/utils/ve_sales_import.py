@@ -1,15 +1,13 @@
-import frappe
-from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
-    get_file,
-)
-from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
-    generate_data_from_excel,
-)
-from frappe.utils import flt
 import json
 
+import frappe
+from frappe.utils import flt
+from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
+    generate_data_from_excel,
+    get_file,
+)
 from erpnext.accounts.party import _get_party_details
-
+from erpnext.controllers.sales_and_purchase_return import get_ref_item_dict
 
 ACCOUNT_HEAD_MAPPING = {
     "cgst": "Output Tax CGST - VE",
@@ -31,12 +29,15 @@ def import_invoices():
 
     invoices = get_invoice_wise_data(data)
     for inv, data in invoices.items():
-        print(inv, "import")
+        print("Importing", inv)
 
-        if frappe.db.exists("Sales Invoice", data.name):
-            continue
-        
         try:
+            if frappe.db.exists("Sales Invoice", data.name):
+                doc = frappe.get_doc("Sales Invoice", data.name)
+                if doc.docstatus == 0:
+                    doc.submit()
+
+                continue
             doc = frappe.new_doc("Sales Invoice")
             doc.name = data.name
             doc.update(
@@ -47,13 +48,15 @@ def import_invoices():
                     "update_stock": 1,
                     "customer": data.customer,
                     "supplier_address": "Castrol India-Billing",
-                    "is_return": 1 if data.document_type == "Credit Note" else 0,
+                    "is_return": data.is_return,
                     "return_against": data.return_against,
                 }
             )
 
             if doc.is_return:
                 doc.update_outstanding_for_self = 0
+                doc.update_billed_amount_in_sales_order = 0
+                doc.update_billed_amount_in_delivery_note = 0
 
             party_details = _get_party_details(
                 doc.customer,
@@ -65,6 +68,8 @@ def import_invoices():
                 party_address=doc.customer_address,
                 company_address=doc.get("company_address"),
             )
+
+            update_gst_in_address(data, party_details.customer_address)
 
             for field in [
                 "customer_address",
@@ -78,18 +83,50 @@ def import_invoices():
 
             update_items(doc, data)
             update_taxes(doc, data)
+            if doc.is_return:
+                update_item_rate(doc)
 
             doc.set_missing_values()
 
+            frappe.flags.do_not_update_taxable_value = True
+
             doc.insert()
             doc.save()
-            
 
             update_round_off(doc, data)
             frappe.db.commit()
             doc.submit()
         except Exception as e:
             print(e)
+
+
+def update_gst_in_address(data, address_name):
+    if data.gstin != frappe.db.get_value("Address", address_name, "gstin"):
+        print("Updated Party GSTIN")
+        frappe.db.set_value(
+            "Address", address_name, "gstin", data.gstin, update_modified=True
+        )
+
+
+def update_item_rate(doc):
+    if not doc.is_return or not doc.return_against:
+        return
+
+    select_fields = "item_code, qty, stock_qty, rate, parenttype, conversion_factor"
+    valid_items = frappe._dict()
+
+    for d in frappe.db.sql(
+        f"""select {select_fields} from `tab{doc.doctype} Item` where parent = %s""",
+        doc.return_against,
+        as_dict=1,
+    ):
+        valid_items = get_ref_item_dict(valid_items, d)
+
+    for d in doc.get("items"):
+        key = d.item_code
+        ref = valid_items.get(key, frappe._dict())
+        if (d.rate) != ref.rate:
+            d.rate = ref.rate
 
 
 def update_items(doc, data):
@@ -135,9 +172,6 @@ def update_taxes(doc, data):
                 },
             )
 
-            if doc.is_return:
-                amount = amount * -1
-
             tax_account_wise_data[account_head]["tax_amount"] += amount
             tax_account_wise_data[account_head]["item_wise_tax_detail"].setdefault(
                 item_code, [flt(row.gst_rate), 0]
@@ -160,6 +194,7 @@ def get_invoice_wise_data(data):
     for row in data:
         row = frappe._dict(row)
         invoice_no = row.get("invoice_no.")
+        is_return = row.document_type == "Credit Note"
         inv = invoices.setdefault(
             (row.invoice_date, row.document_type, invoice_no),
             frappe._dict(
@@ -170,6 +205,7 @@ def get_invoice_wise_data(data):
                     "customer": row.customer_code,
                     "gstin": row.get("customer_gstn_no."),
                     "document_type": row.document_type,
+                    "is_return": is_return,
                     "return_against": row.get("ref._invoice_no."),
                 }
             ),
@@ -194,17 +230,9 @@ def get_invoice_wise_data(data):
                 "qty": qty,
                 "uom": "Nos",
                 "rate": rate,
-                "cgst": (
-                    row.cgst_value * -1
-                    if "document_type" == "Credit Note"
-                    else row.cgst_value
-                ),
-                "sgst": (
-                    row.sgst_value * -1
-                    if "document_type" == "Credit Note"
-                    else row.sgst_value
-                ),
-                "scheme_discount": row.get("scheme_discount_value")
+                "cgst": (row.cgst_value * -1 if is_return else row.cgst_value),
+                "sgst": (row.sgst_value * -1 if is_return else row.sgst_value),
+                "scheme_discount": (row.get("scheme_discount_value"))
                 + row.get("coupon_discount_value"),
                 "cash_discount": row.get("mop_discount"),
                 "gst_rate": 9,
@@ -232,12 +260,20 @@ def get_invoice_wise_data(data):
 
 def update_round_off(doc, data):
     total = 0
-    for row in data.get("items"):
+
+    # Calculate the total from the items
+    for row in data.get("items", []):
         total += row.total
 
+    # Calculate the difference between the grand total and the calculated total
     diff = doc.grand_total - total
 
-    if diff:
+    # If there's no difference, there's nothing to do
+    if diff == 0:
+        return
+
+    # Check if the difference is within the acceptable range
+    if -2 <= diff <= 2:
         doc.append(
             "taxes",
             {
@@ -250,5 +286,7 @@ def update_round_off(doc, data):
                 "tax_amount": diff,
             },
         )
-
-    doc.save()
+        doc.save()
+    else:
+        # Raise an error if the round off is greater than the allowed range
+        frappe.throw("Round off is greater than 2")

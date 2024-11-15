@@ -33,11 +33,8 @@ def import_invoices():
 
         try:
             if frappe.db.exists("Sales Invoice", data.name):
-                doc = frappe.get_doc("Sales Invoice", data.name)
-                if doc.docstatus == 0:
-                    doc.submit()
-
                 continue
+
             doc = frappe.new_doc("Sales Invoice")
             doc.name = data.name
             doc.update(
@@ -94,8 +91,8 @@ def import_invoices():
             doc.save()
 
             update_round_off(doc, data)
-            frappe.db.commit()
             doc.submit()
+            frappe.db.commit()
         except Exception as e:
             print(e)
 

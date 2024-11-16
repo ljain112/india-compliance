@@ -26,7 +26,6 @@ from india_compliance.gst_india.utils import (
     get_escaped_name,
     get_gst_accounts_by_type,
     get_gstin_list,
-    validate_invoice_number,
 )
 from india_compliance.gst_india.utils.exporter import ExcelExporter
 from india_compliance.gst_india.utils.gstr_1 import SUPECOM, get_b2c_limit

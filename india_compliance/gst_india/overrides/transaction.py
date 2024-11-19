@@ -70,9 +70,6 @@ def update_taxable_values(doc):
     if doc.doctype not in DOCTYPES_WITH_GST_DETAIL:
         return
 
-    if frappe.flags.do_not_update_taxable_value:
-        return
-
     total_charges = 0
     apportioned_charges = 0
     tax_witholding_amount = 0
@@ -132,9 +129,6 @@ def update_taxable_values(doc):
 
 def validate_item_wise_tax_detail(doc):
     if doc.doctype not in DOCTYPES_WITH_GST_DETAIL:
-        return
-
-    if frappe.flags.ignore_tax_validation:
         return
 
     item_taxable_values = defaultdict(float)

@@ -10,7 +10,7 @@ DOCUMENT_TYPE_ORDER = {"Invoice": 0, "Free Invoice": 1, "Credit Note": 2}
 
 
 def import_invoices():
-    file_name = "/private/files/Data_20129252_O_20241105023010_7325_E_05Nov2024_638663943037325347.xlsx"
+    file_name = "/private/files/Data_20129252_CO1_20241119094156_5236_E_19Nov2024_638676297076402496.xlsx"
     file_doc, extension = get_file(file_name)
 
     data = generate_data_from_excel(file_doc, extension, as_dict=True)

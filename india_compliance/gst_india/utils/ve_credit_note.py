@@ -1,20 +1,9 @@
 import frappe
+from frappe.utils.data import getdate
 from erpnext.accounts.doctype.chart_of_accounts_importer.chart_of_accounts_importer import (
     generate_data_from_excel,
     get_file,
 )
-from frappe.utils.data import (
-	add_days,
-	add_months,
-	add_to_date,
-	cint,
-	date_diff,
-	flt,
-	get_date_str,
-	getdate,
-	nowdate,
-)
-
 
 CREDIT_NOTE_ACCOUNT = "Credit Note By Company - VE"
 
@@ -35,8 +24,7 @@ def import_invoices():
         if frappe.db.get_value("Journal Entry", {"bill_no": row.document_no}):
             continue
 
-
-        date =getdate(row.document_date)
+        date = getdate(row.document_date)
 
         jv = frappe.new_doc("Journal Entry")
         jv.posting_date = date
@@ -48,7 +36,7 @@ def import_invoices():
         jv.append(
             "accounts",
             {
-                "account":"Debtors - VE",
+                "account": "Debtors - VE",
                 "party_type": "Customer",
                 "party": row.account_code,
                 "credit": row.credit,
@@ -70,8 +58,6 @@ def import_invoices():
         )
 
         jv.set_missing_values()
-
-        print(jv.as_dict())
 
         jv.insert()
         jv.save()

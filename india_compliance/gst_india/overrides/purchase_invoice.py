@@ -99,7 +99,7 @@ def is_b2b_invoice(doc):
 def set_itc_classification(doc):
     if doc.gst_category == "Overseas":
         for item in doc.items:
-            if not item.gst_hsn_code.startswith("99"):
+            if item.get("gst_hsn_code") and not item.gst_hsn_code.startswith("99"):
                 doc.itc_classification = "Import Of Goods"
                 break
         else:

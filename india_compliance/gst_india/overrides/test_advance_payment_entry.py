@@ -505,6 +505,53 @@ class TestRegionalOverrides(TestAdvancePaymentEntry):
         adjust_allocations_for_taxes(pr)
         self.assertEqual(pr.allocation[0].allocated_amount, 42.37)  # 50 / 1.18
 
+    def test_adjust_allocations_for_taxes_with_gst_accounts_used_in_deduction_table(
+        self,
+    ):
+        payment_doc = self._create_payment_entry(do_not_submit=True)
+        payment_doc.append(
+            "deductions",
+            {
+                "account": "Output Tax CGST - _TIRC",
+                "cost_center": "Main - _TIRC",
+                "amount": 45,
+            },
+        )
+        payment_doc.append(
+            "deductions",
+            {
+                "account": "Output Tax SGST - _TIRC",
+                "cost_center": "Main - _TIRC",
+                "amount": 45,
+            },
+        )
+
+        payment_doc.submit()
+        invoice_doc = self._create_sales_invoice()
+
+        pr = frappe.get_doc("Payment Reconciliation")
+        pr.company = "_Test Indian Registered Company"
+        pr.party_type = "Customer"
+        pr.party = invoice_doc.customer
+        pr.receivable_payable_account = invoice_doc.debit_to
+
+        pr.get_unreconciled_entries()
+        invoices = [
+            row.as_dict()
+            for row in pr.invoices
+            if row.invoice_number == invoice_doc.name
+        ]
+        payments = [
+            row.as_dict()
+            for row in pr.payments
+            if row.reference_name == payment_doc.name
+        ]
+        pr.allocate_entries(frappe._dict({"invoices": invoices, "payments": payments}))
+        pr.allocation[0].allocated_amount = 50
+
+        adjust_allocations_for_taxes(pr)
+        self.assertEqual(pr.allocation[0].allocated_amount, 507)  # No tax deducted
+
 
 def make_payment_reconciliation(payment_doc, invoice_doc, amount):
     pr = frappe.get_doc("Payment Reconciliation")

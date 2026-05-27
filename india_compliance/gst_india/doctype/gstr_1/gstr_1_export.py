@@ -49,6 +49,34 @@ CATEGORIES_WITH_ITEMS = {
 }
 
 
+def _get_hsn_sections(is_bifurcated: bool) -> tuple[str, ...]:
+    if is_bifurcated:
+        return (HSNKey.HSN_B2B.value, HSNKey.HSN_B2C.value)
+
+    return (HSNKey.HSN.value,)
+
+
+def _get_selected_sections(section: str, is_hsn_bifurcated: bool) -> tuple[str, ...]:
+    """
+    HSN can be split into `hsn_b2b` / `hsn_b2c`. Every other
+    section uses the GovJsonKey value as-is.
+    """
+    if section != GovJsonKey.HSN.value:
+        return (section,)
+
+    return _get_hsn_sections(is_hsn_bifurcated)
+
+
+def _get_excel_sheet_names(section: str, is_hsn_bifurcated: bool) -> tuple[str, ...]:
+    """Template sheet names that belong to `section` (excluding the `master` reference sheet)."""
+    selected_sections = _get_selected_sections(section, is_hsn_bifurcated)
+    return tuple(
+        JSON_CATEGORY_EXCEL_CATEGORY_MAPPING[key]
+        for key in selected_sections
+        if key in JSON_CATEGORY_EXCEL_CATEGORY_MAPPING
+    )
+
+
 class DataProcessor:
     # transform input data to required format
     FIELD_TRANSFORMATIONS: ClassVar[dict] = {}
@@ -132,7 +160,7 @@ class GovExcel(DataProcessor):
         "V2.1": get_data_file_path("gstr1_excel_template_v2.1.xlsx"),
     }
 
-    def generate(self, gstin, period):
+    def generate(self, gstin, period, section=None):
         """
         Build excel file
         """
@@ -143,16 +171,21 @@ class GovExcel(DataProcessor):
         month, year = gstr_1_log.return_period[:2], gstr_1_log.return_period[2:]
         filing_from = getdate(f"{year}-{month}-01")
 
-        file_version = "V2.1" if filing_from >= HSN_BIFURCATION_FROM else "V2.0"
+        self.is_hsn_bifurcated = filing_from >= HSN_BIFURCATION_FROM
+        file_version = "V2.1" if self.is_hsn_bifurcated else "V2.0"
         file = self.TEMPLATE_EXCEL_FILE.get(file_version)
 
         self.file_field = "filed" if gstr_1_log.filed else "books"
         data = gstr_1_log.load_data(self.file_field)[self.file_field]
         data = self.process_data(data)
-        self.build_excel(data, file)
+
+        if section:
+            data = _filter_data_by_section(data, _get_selected_sections(section, self.is_hsn_bifurcated))
+
+        self.build_excel(data, file, section=section)
 
     def process_data(self, data):
-        data = data.update(data.pop("aggregate_data", {}))
+        data.update(data.pop("aggregate_data", {}))
         category_wise_data = super().process_data(data)
 
         for category, category_data in category_wise_data.items():
@@ -182,11 +215,14 @@ class GovExcel(DataProcessor):
 
         return category_wise_data
 
-    def build_excel(self, data, file=None):
+    def build_excel(self, data, file=None, section=None):
         excel = ExcelExporter(file)
 
         if excel.has_sheet("Sheet"):
             excel.remove_sheet("Sheet")
+
+        if section:
+            self._filter_selected_section_sheets(excel, section)
 
         for category, cat_data in data.items():
             sheet_name = JSON_CATEGORY_EXCEL_CATEGORY_MAPPING.get(category)
@@ -208,7 +244,17 @@ class GovExcel(DataProcessor):
                     default_data_format={"height": 15},
                 )
 
-        excel.export(get_file_name("Gov", self.gstin, self.period))
+        excel.export(_get_gov_filename(self.gstin, self.period, section))
+
+    def _filter_selected_section_sheets(self, excel, section):
+        """Remove every template sheet that does not belong to `section`. Master stays."""
+        if not excel.is_loaded:
+            return
+
+        kept = {GovExcelSheetName.MASTER.value, *_get_excel_sheet_names(section, self.is_hsn_bifurcated)}
+        for sheet_name in list(excel.wb.sheetnames):
+            if sheet_name not in kept:
+                excel.remove_sheet(sheet_name)
 
     def process_doc_issue_data(self, data):
         """
@@ -2073,10 +2119,38 @@ class ReconcileExcel:
         ]
 
 
+def _filter_data_by_section(data: dict, section: str | tuple[str, ...] | None) -> dict:
+    """Keep only entries whose keys belong to `section`.
+
+    Accepts a single section string (JSON path) or a tuple of expanded keys
+    (Excel path, e.g. ``("hsn_b2b", "hsn_b2c")`` for HSN on bifurcated periods).
+    """
+    if not section:
+        return data
+    keys = (section,) if isinstance(section, str) else section
+    return {k: v for k, v in data.items() if k in keys}
+
+
+VALID_SECTIONS = frozenset(key.value for key in GovJsonKey)
+
+
+def _validate_section(section: str | None) -> None:
+    if section and section not in VALID_SECTIONS:
+        frappe.throw(frappe._("Invalid section: {0}").format(section))
+
+
+def _get_gov_filename(company_gstin: str, period: str, section: str | None) -> str:
+    name = f"GSTR-1-Gov-{company_gstin}-{period}"
+    if section:
+        name = f"{name}-{section}"
+    return name
+
+
 @frappe.whitelist()
-def download_filed_as_excel(company_gstin: str, month_or_quarter: str, year: str):
+def download_filed_as_excel(company_gstin: str, month_or_quarter: str, year: str, section: str | None = None):
     frappe.has_permission("GSTR-1", "export", throw=True)
-    GovExcel().generate(company_gstin, get_period(month_or_quarter, year))
+    _validate_section(section)
+    GovExcel().generate(company_gstin, get_period(month_or_quarter, year), section=section)
 
 
 @frappe.whitelist()
@@ -2102,14 +2176,21 @@ def get_gstr_1_json(
     month_or_quarter: str,
     include_uploaded: bool = False,
     delete_missing: bool = False,
+    section: str | None = None,
 ):
     frappe.has_permission("GSTR-1", "export", throw=True)
+    _validate_section(section)
+
+    settings = frappe.get_cached_doc("GST Settings")
+    if not settings.is_gstr1_api_enabled(company_gstin):
+        include_uploaded = True
+        delete_missing = False
 
     period = get_period(month_or_quarter, year)
     gstr1_log = frappe.get_doc("GST Return Log", f"GSTR1-{period}-{company_gstin}")
 
     data = gstr1_log.get_json_for("books")
-    data = data.update(data.pop("aggregate_data", {}))
+    data.update(data.pop("aggregate_data", {}))
 
     for subcategory, subcategory_data in data.items():
         if subcategory in {
@@ -2163,13 +2244,18 @@ def get_gstr_1_json(
 
     gstr1_log.normalize_data(data)
 
+    gov_data = _filter_data_by_section(
+        convert_to_gov_data_format(data, company_gstin),
+        section,
+    )
+
     return {
         "data": {
             "gstin": company_gstin,
             "fp": period,
-            **convert_to_gov_data_format(data, company_gstin),
+            **gov_data,
         },
-        "filename": f"GSTR-1-Gov-{company_gstin}-{period}.json",
+        "filename": f"{_get_gov_filename(company_gstin, period, section)}.json",
     }
 
 

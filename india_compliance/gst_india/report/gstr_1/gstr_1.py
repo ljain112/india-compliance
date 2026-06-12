@@ -78,7 +78,7 @@ class Gstr1Report:
             company_gstin,
             (
                 CASE
-                    WHEN gst_category = "Unregistered" AND NULLIF(return_against, '') is not null
+                    WHEN gst_category in ("Unregistered", "Overseas") AND NULLIF(return_against, '') is not null
                     THEN (select base_grand_total from `tabSales Invoice` ra where ra.name = si.return_against)
                 END
             ) AS return_against_invoice_total
@@ -229,14 +229,20 @@ class Gstr1Report:
             # not CDN
             return False
 
-        if invoice.gst_category != "Unregistered":
+        if invoice.gst_category not in ("Unregistered", "Overseas"):
+            return True
+
+        if invoice.gst_category == "Overseas" and invoice.place_of_supply == "96-Other Countries":
+            # Export CDN
             return True
 
         if invoice.company_gstin[:2] == invoice.place_of_supply[:2]:
             # not B2CL
             return False
 
-        grand_total = invoice.return_against_invoice_total or abs(invoice.base_grand_total)
+        grand_total = abs(invoice.base_grand_total)
+        if invoice.return_against:
+            grand_total = max(grand_total, abs(invoice.return_against_invoice_total or 0))
 
         return grand_total > get_b2c_limit(invoice.posting_date)
 

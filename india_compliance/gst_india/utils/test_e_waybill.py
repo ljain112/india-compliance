@@ -1758,6 +1758,42 @@ class TestEWaybill(IntegrationTestCase):
             ),
         )
 
+    def test_transporter_fields_editable_after_submit_without_ewaybill(self):
+        """Transporter fields must be saveable on a submitted doc when no e-Waybill exists."""
+        si = create_sales_invoice(
+            is_out_state=True,
+            transporter="_Test Common Supplier",
+            mode_of_transport="Road",
+            distance=10,
+        )
+
+        doc = load_doc("Sales Invoice", si.name, "submit")
+        doc.vehicle_no = "GJ05DL9009"
+        doc.lr_no = "LR-TEST-001"
+        doc.save()
+
+        doc.reload()
+        self.assertEqual(doc.vehicle_no, "GJ05DL9009")
+        self.assertEqual(doc.lr_no, "LR-TEST-001")
+
+    def test_gst_transporter_id_validated_on_update_after_submit(self):
+        """Editing gst_transporter_id after submit must run the same format check
+        and normalisation that the `validate` hook does before submit (the
+        controller `validate` hook does not fire on update-after-submit)."""
+        si = create_sales_invoice(is_out_state=True)
+
+        # An invalid transporter id must be rejected post-submit
+        doc = load_doc("Sales Invoice", si.name, "submit")
+        doc.gst_transporter_id = "INVALID"
+        self.assertRaises(frappe.ValidationError, doc.save)
+
+        # A valid value must be normalised (uppercased / stripped) like pre-submit
+        doc = load_doc("Sales Invoice", si.name, "submit")
+        doc.gst_transporter_id = " 05aaacg2140a1zl "
+        doc.save()
+        doc.reload()
+        self.assertEqual(doc.gst_transporter_id, "05AAACG2140A1ZL")
+
 
 def update_dates_for_test_data(test_data):
     """Update dates in test data"""

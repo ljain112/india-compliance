@@ -1885,6 +1885,9 @@ def sync_address_dependent_fields_on_submit(doc, method=None):
     if doc.doctype == "Sales Invoice":
         validate_backdated_transaction(doc, action="update")
 
+    if has_changed("gst_transporter_id"):
+        validate_gst_transporter_id(doc)
+
     if changed_address_fields:
         sync_gst_details_from_address(doc, changed_address_fields)
 

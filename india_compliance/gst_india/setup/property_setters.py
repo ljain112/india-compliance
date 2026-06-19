@@ -75,6 +75,7 @@ def get_property_setters(*, include_defaults=False):
         },
         *PURCHASE_RECEIPT_PROPERTIES,
         *SUBCONTRACTING_RECEIPT_PROPERTIES,
+        *DELIVERY_NOTE_PROPERTIES,
         *ADDRESS_ALLOW_ON_SUBMIT_PROPERTIES,
     ]
 
@@ -101,6 +102,25 @@ def get_options_property_setter(doctype, fieldname, new_options, prepend=True):
         "property": "options",
         "value": options,
     }
+
+
+def allow_edit_on_submit_for_transport_fields(fieldname):
+    return [
+        {
+            "doctype_or_field": "DocField",
+            "fieldname": fieldname,
+            "property": "allow_on_submit",
+            "property_type": "Check",
+            "value": "1",
+        },
+        {
+            "doctype_or_field": "DocField",
+            "fieldname": fieldname,
+            "property": "read_only_depends_on",
+            "property_type": "Code",
+            "value": "eval:doc.ewaybill",
+        },
+    ]
 
 
 TRANSPORTER_NAME_PROPERTIES = [
@@ -139,6 +159,13 @@ TRANSPORTER_NAME_PROPERTIES = [
         "property_type": "Check",
         "value": "1",
     },
+    {
+        "doctype_or_field": "DocField",
+        "fieldname": "transporter_name",
+        "property": "allow_on_submit",
+        "property_type": "Check",
+        "value": "1",
+    },
 ]
 
 LR_NO_PROPERTIES = [
@@ -163,6 +190,7 @@ LR_NO_PROPERTIES = [
         "property_type": "Int",
         "value": "30",
     },
+    *allow_edit_on_submit_for_transport_fields("lr_no"),
 ]
 
 
@@ -188,6 +216,7 @@ LR_DATE_PROPERTIES = [
         "property_type": "Text",
         "value": "Today",
     },
+    *allow_edit_on_submit_for_transport_fields("lr_date"),
 ]
 
 PURCHASE_RECEIPT_PROPERTIES = [
@@ -198,6 +227,29 @@ PURCHASE_RECEIPT_PROPERTIES = [
 SUBCONTRACTING_RECEIPT_PROPERTIES = [
     {"doctype": "Subcontracting Receipt", **field}
     for field in TRANSPORTER_NAME_PROPERTIES + LR_NO_PROPERTIES + LR_DATE_PROPERTIES
+]
+
+
+DELIVERY_NOTE_PROPERTIES = [
+    {
+        "doctype": "Delivery Note",
+        "fieldname": "transporter_name",
+        "property": "allow_on_submit",
+        "property_type": "Check",
+        "value": "1",
+    },
+    *[
+        {"doctype": "Delivery Note", **prop}
+        for fieldname in (
+            "transporter",
+            "driver",
+            "driver_name",
+            "lr_no",
+            "lr_date",
+            "vehicle_no",
+        )
+        for prop in allow_edit_on_submit_for_transport_fields(fieldname)
+    ],
 ]
 
 SALES_ADDRESS_FIELDS = (

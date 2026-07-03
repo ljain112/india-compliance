@@ -68,7 +68,26 @@ repos:
       - id: ruff-format
         name: "Run ruff formatter"
 
+  - repo: local
+    hooks:
+      - id: patch-increment
+        name: "Bump patch counter when custom fields / property setters change"
+        entry: python india_compliance/scripts/check_patch_increment.py
+        language: system
+        pass_filenames: false
+        files: |
+          (?x)^(
+              india_compliance/gst_india/constants/custom_fields\.py|
+              india_compliance/gst_india/setup/property_setters\.py|
+              india_compliance/income_tax_india/constants/custom_fields\.py|
+              india_compliance/audit_trail/constants/custom_fields\.py|
+              india_compliance/patches\.txt
+          )$
+
 ci:
   autoupdate_schedule: weekly
-  skip: []
+  # patch-increment compares the staged index against HEAD, which only has
+  # meaning for a local `git commit`; on pre-commit.ci nothing is staged, so it
+  # would be a silent no-op. Keep it a local-only guard.
+  skip: [patch-increment]
   submodules: false

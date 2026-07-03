@@ -13,11 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # full history so the PR base is reachable for the merge-base diff
+          fetch-depth: 0
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v6
         with:
           python-version: "3.10"
+
+      - name: Check patch counter bump
+        if: github.event_name == 'pull_request'
+        run: >-
+          python india_compliance/scripts/check_patch_increment.py
+          --base ${{ github.event.pull_request.base.sha }}
 
       - name: Install and Run Pre-commit
         uses: pre-commit/action@v3.0.1

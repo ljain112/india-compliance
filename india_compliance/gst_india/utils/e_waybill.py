@@ -31,11 +31,9 @@ from india_compliance.gst_india.constants import (
     GST_TAX_TYPES,
     GSTIN_FORMAT,
     SALES_DOCTYPES,
-    SANDBOX_SHIP_TO,
     SERVICE_HSN_PREFIX,
     STATE_NUMBERS,
     TAXABLE_GST_TREATMENTS,
-    URP,
 )
 from india_compliance.gst_india.constants.e_waybill import (
     ADDRESS_FIELDS,
@@ -46,6 +44,7 @@ from india_compliance.gst_india.constants.e_waybill import (
     EXTEND_VALIDITY_REASON_CODES,
     ITEM_LIMIT,
     PERMITTED_DOCTYPES,
+    SANDBOX_SHIP_TO,
     SHIP_TO_TRANSACTION_TYPES,
     SUB_SUPPLY_TYPES,
     TRANSIT_TYPES,
@@ -1296,7 +1295,7 @@ class EWaybillData(GSTTransactionData):
             # consignee is a different party here, so it needs a GSTIN of its own.
             # state and pincode are substituted along with it, as the e-Invoice APIs
             # validate them against the GSTIN. ERROR CODE: 2325, 3039
-            if self.sandbox_mode and self.ship_to.gstin != URP:
+            if self.sandbox_mode and self.ship_to.gstin != "URP":
                 self.ship_to.update(SANDBOX_SHIP_TO)
 
             data["ExpShipDtls"] = {
@@ -1826,7 +1825,7 @@ class EWaybillData(GSTTransactionData):
                 )
 
             def _get_sandbox_gstin(address, key):
-                if address.gstin == URP:
+                if address.gstin == "URP":
                     return address.gstin
 
                 gstin = sandbox_gstin.get((self.doc.doctype, self.doc.get("is_return") or 0))[key]
@@ -1843,7 +1842,7 @@ class EWaybillData(GSTTransactionData):
             self.bill_from.gstin = _get_sandbox_gstin(self.bill_from, 0)
             self.bill_to.gstin = _get_sandbox_gstin(self.bill_to, 1)
 
-            if self.ship_to.gstin == URP:
+            if self.ship_to.gstin == "URP":
                 pass  # an unregistered consignee has no GSTIN to substitute
 
             elif not has_different_ship_to:

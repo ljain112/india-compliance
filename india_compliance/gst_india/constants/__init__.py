@@ -1438,18 +1438,6 @@ TCS = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[C]{1}[0-9A-Z]{1}
 
 GSTIN_FORMAT = re.compile(r"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}")
 
-# Unregistered Person, sent in place of a GSTIN where the party doesn't have one
-URP = "URP"
-
-# Ship To party used in sandbox. It needs a GSTIN of its own, as it can't be the same
-# as bill to. State and pincode are part of it, as the APIs validate them against the
-# GSTIN. ERROR CODE: 2323, 2325, 3039
-SANDBOX_SHIP_TO = {
-    "gstin": "02AMBPG7773M002",
-    "state_number": "02",
-    "pincode": 171302,
-}
-
 GSTIN_FORMATS = {
     "Registered Regular": REGISTERED,
     "Registered Composition": REGISTERED,

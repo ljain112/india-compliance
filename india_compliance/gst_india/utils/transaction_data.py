@@ -10,7 +10,6 @@ from india_compliance.gst_india.constants import (
     GST_TAX_RATES,
     GST_TAX_TYPES,
     TAXABLE_GST_TREATMENTS,
-    URP,
     VALID_HSN_LENGTHS,
 )
 from india_compliance.gst_india.constants.e_waybill import (
@@ -430,7 +429,7 @@ class GSTTransactionData:
 
         return frappe._dict(
             {
-                "gstin": address_gstin or address.get("gstin") or URP,
+                "gstin": address_gstin or address.get("gstin") or "URP",
                 "state_number": address.gst_state_number,
                 "address_title": self.sanitize_value(
                     address.address_title,

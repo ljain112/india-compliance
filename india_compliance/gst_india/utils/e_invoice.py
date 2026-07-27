@@ -31,15 +31,14 @@ from india_compliance.gst_india.constants import (
     GST_CATEGORIES,
     GSTIN_FORMAT,
     PORT_CODES,
-    SANDBOX_SHIP_TO,
     SERVICE_HSN_PREFIX,
     TAXABLE_GST_TREATMENTS,
-    URP,
 )
 from india_compliance.gst_india.constants.e_invoice import (
     CANCEL_REASON_CODES,
     ITEM_LIMIT,
 )
+from india_compliance.gst_india.constants.e_waybill import SANDBOX_SHIP_TO
 from india_compliance.gst_india.doctype.gst_settings.gst_settings import (
     get_e_invoice_applicability_date,
 )
@@ -48,7 +47,6 @@ from india_compliance.gst_india.utils import (
     are_goods_supplied,
     handle_server_errors,
     is_api_enabled,
-    is_distinct_ship_to_party,
     is_foreign_doc,
     is_overseas_doc,
     load_doc,
@@ -815,7 +813,7 @@ class EInvoiceData(GSTTransactionData):
 
         shipping_address = self.get_address_details(ship_to_address)
 
-        if not is_distinct_ship_to_party(shipping_address.gstin, self.billing_address.gstin):
+        if shipping_address.gstin != "URP" and shipping_address.gstin == self.billing_address.gstin:
             return
 
         return shipping_address
@@ -865,7 +863,7 @@ class EInvoiceData(GSTTransactionData):
                 self.billing_address.update(buyer)
 
                 # consignee is a different party here, so it needs a GSTIN of its own
-                if self.shipping_address and self.shipping_address.gstin != URP:
+                if self.shipping_address and self.shipping_address.gstin != "URP":
                     self.shipping_address.update(SANDBOX_SHIP_TO)
 
                 if self.transaction_details.total_igst_amount > 0:

@@ -18,6 +18,7 @@ from india_compliance.gst_india.utils.e_invoice import (
     EInvoiceData,
     cancel_e_invoice,
     generate_e_invoice,
+    has_ship_to_details,
     mark_e_invoice_as_cancelled,
     mark_e_invoice_as_generated,
     validate_e_invoice_applicability,
@@ -136,6 +137,54 @@ class TestEInvoice(EInvoiceTestMixin, IntegrationTestCase):
         self.assertTrue(data["ShipDtls"]["LglNm"])
         # both blocks present -> the type-4 analog
         self.assertIn("DispDtls", data)
+
+    @change_settings("GST Settings", {"sandbox_mode": 0})
+    def test_e_invoice_for_same_buyer_and_ship_to_gstin(self):
+        """
+        Two addresses of the same party is a regular transaction, since Ship To GSTIN
+        can't be the same as Buyer GSTIN. ERROR CODE: 2323
+        """
+        si = create_sales_invoice(
+            company_address="_Test Indian Registered Company-Billing",
+            customer="_Test Registered Customer",
+            customer_address="_Test Registered Customer-Billing",
+            # different address, same GSTIN as the billing address
+            shipping_address_name="_Test Registered Customer Warehouse-Shipping",
+            is_in_state=True,
+            do_not_submit=True,
+        )
+
+        data = EInvoiceData(si).get_data()
+
+        self.assertNotIn("ShipDtls", data)
+
+    def test_has_ship_to_details(self):
+        """
+        Ship To details can't be modified for B2B and SEZ transactions, so the flag
+        logged against the IRN must match what the e-Invoice was generated with.
+        ERROR CODE: 2324
+        """
+        for shipping_address in (
+            None,  # no Ship To details
+            "_Test Registered Customer-Billing",  # same as billing address
+            "_Test Registered Customer Warehouse-Shipping",  # same party
+            "_Test Unregistered Consignee-Shipping",  # unregistered consignee
+            "_Test Registered Customer-Billing-1",  # different party
+        ):
+            with self.subTest(shipping_address=shipping_address):
+                si = create_sales_invoice(
+                    company_address="_Test Indian Registered Company-Billing",
+                    customer="_Test Registered Customer",
+                    customer_address="_Test Registered Customer-Billing",
+                    shipping_address_name=shipping_address,
+                    is_in_state=True,
+                    do_not_submit=True,
+                )
+
+                self.assertEqual(
+                    has_ship_to_details(si),
+                    "ShipDtls" in EInvoiceData(si).get_data(),
+                )
 
     @change_settings("GST Settings", {"enable_overseas_transactions": 1})
     def test_request_data_for_foreign_transactions(self):

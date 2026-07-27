@@ -18,6 +18,7 @@ from india_compliance.gst_india.api_classes.base import BASE_URL
 from india_compliance.gst_india.constants import SERVICE_HSN_PREFIX
 from india_compliance.gst_india.constants.e_waybill import (
     E_WAYBILL_CHANGES_APPLICABLE_DATE,
+    SANDBOX_SHIP_TO,
     SUB_SUPPLY_TYPES,
 )
 from india_compliance.gst_india.overrides.sales_invoice import (
@@ -1482,6 +1483,77 @@ class TestEWaybill(IntegrationTestCase):
         self.assertEqual(e_waybill_data.get("transactionType"), 4)
         self.assertTrue(e_waybill_data.get("shipToGSTIN"))
         self.assertTrue(e_waybill_data.get("shipToTradeName"))
+
+    @change_settings("GST Settings", {"sandbox_mode": 1})
+    def test_e_waybill_exp_ship_dtls_with_irn(self):
+        """
+        Ship To details sent during IRN generation can't be modified for B2B and SEZ
+        transactions, so they are only sent again where the IRN was generated without
+        them. ERROR CODE: 2324
+        """
+        si = create_sales_invoice(
+            vehicle_no="GJ07DL9009",
+            company_address="_Test Indian Registered Company-Billing",
+            customer="_Test Registered Customer",
+            customer_address="_Test Registered Customer-Billing",
+            shipping_address_name="_Test Registered Customer-Billing-1",
+            is_in_state=1,
+            distance=10,
+            transporter="_Test Common Supplier",
+            mode_of_transport="Road",
+            irn="1234567890123456789012345678901234567890123456789012345678901234",
+            do_not_submit=True,
+        )
+        si.gst_transporter_id = ""
+        si.submit()
+
+        e_invoice_log = frappe.get_doc(
+            {
+                "doctype": "e-Invoice Log",
+                "irn": si.irn,
+                "reference_doctype": si.doctype,
+                "reference_name": si.name,
+                "has_ship_to_details": 1,
+            }
+        ).insert(ignore_if_duplicate=True)
+
+        # sent during IRN generation, so they can't be sent again
+        self.assertNotIn("ExpShipDtls", EWaybillData(si).get_data(with_irn=True))
+
+        # where the shipping address is set after IRN generation, they can be sent
+        e_invoice_log.db_set("has_ship_to_details", 0)
+
+        exp_ship_dtls = EWaybillData(si).get_data(with_irn=True).get("ExpShipDtls")
+        self.assertEqual(exp_ship_dtls.get("Gstin"), SANDBOX_SHIP_TO["gstin"])
+        self.assertEqual(exp_ship_dtls.get("Stcd"), SANDBOX_SHIP_TO["state_number"])
+        self.assertEqual(exp_ship_dtls.get("Pin"), SANDBOX_SHIP_TO["pincode"])
+        self.assertTrue(exp_ship_dtls.get("TrdNm"))
+        self.assertTrue(exp_ship_dtls.get("Addr1"))
+
+    @change_settings("GST Settings", {"sandbox_mode": 1})
+    def test_e_waybill_exp_ship_dtls_for_same_bill_to_and_ship_to_gstin(self):
+        """
+        Ship To details aren't sent for a Regular transaction, so they aren't sent
+        again where the consignee is the same party as the buyer. ERROR CODE: 618
+        """
+        si = create_sales_invoice(
+            vehicle_no="GJ07DL9009",
+            company_address="_Test Indian Registered Company-Billing",
+            customer="_Test Registered Customer",
+            customer_address="_Test Registered Customer-Billing",
+            # different address, same GSTIN as the billing address
+            shipping_address_name="_Test Registered Customer Warehouse-Shipping",
+            is_in_state=1,
+            distance=10,
+            transporter="_Test Common Supplier",
+            mode_of_transport="Road",
+            irn="4321098765432109876543210987654321098765432109876543210987654321",
+            do_not_submit=True,
+        )
+        si.gst_transporter_id = ""
+        si.submit()
+
+        self.assertNotIn("ExpShipDtls", EWaybillData(si).get_data(with_irn=True))
 
     @change_settings("GST Settings", {"sandbox_mode": 0})
     def test_ship_to_gstin_gated_by_rollout_date(self):

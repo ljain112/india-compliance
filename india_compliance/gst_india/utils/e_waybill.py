@@ -1846,11 +1846,15 @@ class EWaybillData(GSTTransactionData):
             if self.ship_to.gstin == URP:
                 pass  # an unregistered consignee has no GSTIN to substitute
 
-            elif has_different_ship_to:
-                self.ship_to.gstin = SHIPPING_GSTIN
+            elif not has_different_ship_to:
+                self.ship_to.gstin = self.bill_to.gstin
 
             else:
-                self.ship_to.gstin = self.bill_to.gstin
+                self.ship_to.gstin = _get_sandbox_gstin(self.ship_to, 1)
+
+                # a third GSTIN is needed only where bill to has taken this one
+                if self.ship_to.gstin == self.bill_to.gstin:
+                    self.ship_to.gstin = SHIPPING_GSTIN
 
         if self.doc.get("is_return") or self.bill_to.gst_category == "SEZ":
             to_state_code = self.bill_to.state_number

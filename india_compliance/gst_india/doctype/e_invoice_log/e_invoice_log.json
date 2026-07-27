@@ -10,6 +10,7 @@
   "reference_doctype",
   "reference_name",
   "is_generated_in_sandbox_mode",
+  "has_ship_to_details",
   "column_break_1",
   "acknowledgement_number",
   "acknowledged_on",
@@ -116,6 +117,13 @@
    "label": "Is Generated in Sandbox Mode"
   },
   {
+   "fieldname": "has_ship_to_details",
+   "fieldtype": "Check",
+   "label": "Has Ship To Details",
+   "read_only": 1,
+   "description": "Ship To details were sent during IRN generation. They can't be modified while generating the e-Waybill by IRN for B2B and SEZ transactions."
+  },
+  {
    "fieldname": "reference_doctype",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -141,7 +149,7 @@
    "link_fieldname": "irn"
   }
  ],
- "modified": "2025-02-26 11:43:41.437023",
+ "modified": "2026-07-27 17:45:00.000000",
  "modified_by": "Administrator",
  "module": "GST India",
  "name": "e-Invoice Log",

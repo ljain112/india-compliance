@@ -7,6 +7,15 @@ from frappe.utils import getdate
 # (already live in sandbox)
 E_WAYBILL_CHANGES_APPLICABLE_DATE = getdate("2026-08-01")
 
+# Ship To party used in sandbox, where the e-Invoice APIs are used. It needs a GSTIN
+# of its own, as it can't be the same as bill to. State and pincode are part of it, as
+# the APIs validate them against the GSTIN. ERROR CODE: 2323, 2325, 3039
+SANDBOX_SHIP_TO = {
+    "gstin": "02AMBPG7773M002",
+    "state_number": "02",
+    "pincode": 171302,
+}
+
 selling_address = {
     "bill_from": "company_address",
     "bill_to": "customer_address",

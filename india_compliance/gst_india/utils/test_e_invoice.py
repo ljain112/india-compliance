@@ -27,7 +27,6 @@ from india_compliance.gst_india.utils.e_waybill import EWaybillData
 from india_compliance.gst_india.utils.tests import (
     append_item,
     create_sales_invoice,
-    create_unregistered_shipping_address,
 )
 
 
@@ -124,7 +123,7 @@ class TestEInvoice(EInvoiceTestMixin, IntegrationTestCase):
             dispatch_address_name="_Test Indian Registered Company-Shipping",  # dispatch differs
             customer="_Test Registered Customer",
             customer_address="_Test Registered Customer-Billing",
-            shipping_address_name=create_unregistered_shipping_address(),  # ship-to differs
+            shipping_address_name="_Test Unregistered Consignee-Shipping",  # ship-to differs
             is_in_state=True,
             do_not_submit=True,
         )
@@ -171,7 +170,7 @@ class TestEInvoice(EInvoiceTestMixin, IntegrationTestCase):
             company_address="_Test Indian Registered Company-Billing",
             customer="_Test Registered Customer",
             customer_address="_Test Registered Customer-Billing",
-            shipping_address_name=create_unregistered_shipping_address(),
+            shipping_address_name="_Test Unregistered Consignee-Shipping",
             is_in_state=True,
             do_not_submit=True,
         )

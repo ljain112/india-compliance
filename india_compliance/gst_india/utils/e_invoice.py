@@ -38,6 +38,7 @@ from india_compliance.gst_india.constants.e_invoice import (
     CANCEL_REASON_CODES,
     ITEM_LIMIT,
 )
+from india_compliance.gst_india.constants.e_waybill import SANDBOX_SHIP_TO
 from india_compliance.gst_india.doctype.gst_settings.gst_settings import (
     get_e_invoice_applicability_date,
 )
@@ -392,6 +393,7 @@ def log_and_process_e_invoice_generation(doc, result, sandbox_mode=False, messag
             "signed_invoice": result.SignedInvoice,
             "signed_qr_code": result.SignedQRCode,
             "invoice_data": invoice_data,
+            "has_ship_to_details": bool(EInvoiceData(doc).get_ship_to_address()),
             "is_generated_in_sandbox_mode": sandbox_mode,
         },
     )
@@ -779,6 +781,19 @@ class EInvoiceData(GSTTransactionData):
 
         return super().set_transporter_details()
 
+    def get_ship_to_address(self):
+        """Address the Ship To details are generated from, if the transaction has one."""
+        ship_to_address = (
+            self.doc.port_address
+            if (is_foreign_doc(self.doc) and self.doc.port_address)
+            else self.doc.shipping_address_name
+        )
+
+        if ship_to_address == self.doc.customer_address:
+            return
+
+        return ship_to_address
+
     def set_party_address_details(self):
         self.set_address_gstin_map()
 
@@ -788,18 +803,23 @@ class EInvoiceData(GSTTransactionData):
         )
         self.company_address = self.get_address_details(self.doc.company_address, validate_gstin=True)
 
-        ship_to_address = (
-            self.doc.port_address
-            if (is_foreign_doc(self.doc) and self.doc.port_address)
-            else self.doc.shipping_address_name
-        )
+        ship_to_address = self.get_ship_to_address()
 
         # Defaults
         self.shipping_address = None
         self.dispatch_address = None
 
-        if ship_to_address and self.doc.customer_address != ship_to_address:
-            self.shipping_address = self.get_address_details(ship_to_address)
+        if ship_to_address:
+            shipping_address = self.get_address_details(ship_to_address)
+
+            # Bill To - Ship To requires the consignee to be a party distinct from the
+            # buyer, since Ship To GSTIN can't be the same as Buyer GSTIN. Two
+            # addresses of the same party are a regular transaction, with no Ship To.
+            # "URP" denotes a missing GSTIN rather than an identity, so an unregistered
+            # consignee remains distinct from an unregistered buyer.
+            # ERROR CODE: 2323
+            if shipping_address.gstin != self.billing_address.gstin or shipping_address.gstin == "URP":
+                self.shipping_address = shipping_address
 
         if self.doc.dispatch_address_name and self.doc.company_address != self.doc.dispatch_address_name:
             self.dispatch_address = self.get_address_details(self.doc.dispatch_address_name)
@@ -829,17 +849,12 @@ class EInvoiceData(GSTTransactionData):
                     "state_number": "36",
                     "pincode": 500055,
                 }
+
                 self.billing_address.update(buyer)
 
-                if self.shipping_address:
-                    if self.shipping_address.get("gstin") == "URP":
-                        self.shipping_address.update(
-                            {"gstin": "URP", "state_number": "02", "pincode": 171302}
-                        )
-                    else:
-                        self.shipping_address.update(
-                            seller
-                        )  # note: buyer and shipping gstin can't be the same
+                # consignee is a different party here, so it needs a GSTIN of its own
+                if self.shipping_address and self.shipping_address.gstin != "URP":
+                    self.shipping_address.update(SANDBOX_SHIP_TO)
 
                 if self.transaction_details.total_igst_amount > 0:
                     self.transaction_details.pos_state_code = "36"

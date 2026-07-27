@@ -57,7 +57,6 @@ from india_compliance.gst_india.overrides.transaction import (
 from india_compliance.gst_india.utils import (
     handle_server_errors,
     is_api_enabled,
-    is_distinct_ship_to_party,
     is_foreign_doc,
     is_outward_stock_entry,
     load_doc,
@@ -1722,7 +1721,13 @@ class EWaybillData(GSTTransactionData):
         if has_different_to_address:
             self.ship_to = self.get_address_details(address.ship_to)
 
-            has_different_to_address = is_distinct_ship_to_party(self.ship_to.gstin, self.bill_to.gstin)
+            # Bill To - Ship To requires the consignee to be a party distinct from the
+            # buyer, since NIC rejects an e-Waybill where Ship To GSTIN equals Bill To
+            # GSTIN. Two addresses of the same party are a Regular transaction.
+            # "URP" denotes a missing GSTIN rather than an identity, so an unregistered
+            # consignee remains distinct from an unregistered buyer.
+            # ERROR CODE: 618
+            has_different_to_address = self.ship_to.gstin != self.bill_to.gstin or self.ship_to.gstin == "URP"
 
         if has_different_to_address and has_different_from_address:
             transaction_type = 4

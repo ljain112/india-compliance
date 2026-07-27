@@ -49,6 +49,7 @@ from india_compliance.gst_india.constants import (
     TCS,
     TIMEZONE,
     UOM_MAP,
+    URP,
     VALID_HSN_LENGTHS,
 )
 
@@ -444,6 +445,18 @@ def is_foreign_doc(doc):
 
 def is_foreign_transaction(gst_category, place_of_supply):
     return gst_category == "Overseas" and place_of_supply == "96-Other Countries"
+
+
+def is_distinct_ship_to_party(ship_to_gstin, bill_to_gstin):
+    """
+    Bill To - Ship To requires the consignee to be a party distinct from the buyer,
+    since Ship To GSTIN can't be the same as Bill To GSTIN. Two addresses of the same
+    party are a regular transaction.
+
+    URP denotes a missing GSTIN rather than an identity, so an unregistered consignee
+    remains distinct from an unregistered buyer. ERROR CODE: 618, 2323, 4073
+    """
+    return ship_to_gstin == URP or ship_to_gstin != bill_to_gstin
 
 
 def is_import_of_goods(doc):

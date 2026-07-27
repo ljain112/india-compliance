@@ -31,9 +31,11 @@ from india_compliance.gst_india.constants import (
     GST_TAX_TYPES,
     GSTIN_FORMAT,
     SALES_DOCTYPES,
+    SANDBOX_SHIP_TO,
     SERVICE_HSN_PREFIX,
     STATE_NUMBERS,
     TAXABLE_GST_TREATMENTS,
+    URP,
 )
 from india_compliance.gst_india.constants.e_waybill import (
     ADDRESS_FIELDS,
@@ -44,7 +46,6 @@ from india_compliance.gst_india.constants.e_waybill import (
     EXTEND_VALIDITY_REASON_CODES,
     ITEM_LIMIT,
     PERMITTED_DOCTYPES,
-    SANDBOX_SHIP_TO,
     SHIP_TO_TRANSACTION_TYPES,
     SUB_SUPPLY_TYPES,
     TRANSIT_TYPES,
@@ -57,6 +58,7 @@ from india_compliance.gst_india.overrides.transaction import (
 from india_compliance.gst_india.utils import (
     handle_server_errors,
     is_api_enabled,
+    is_distinct_ship_to_party,
     is_foreign_doc,
     is_outward_stock_entry,
     load_doc,
@@ -1294,7 +1296,7 @@ class EWaybillData(GSTTransactionData):
             # consignee is a different party here, so it needs a GSTIN of its own.
             # state and pincode are substituted along with it, as the e-Invoice APIs
             # validate them against the GSTIN. ERROR CODE: 2325, 3039
-            if self.sandbox_mode and self.ship_to.gstin != "URP":
+            if self.sandbox_mode and self.ship_to.gstin != URP:
                 self.ship_to.update(SANDBOX_SHIP_TO)
 
             data["ExpShipDtls"] = {
@@ -1721,13 +1723,7 @@ class EWaybillData(GSTTransactionData):
         if has_different_to_address:
             self.ship_to = self.get_address_details(address.ship_to)
 
-            # Bill To - Ship To requires the consignee to be a party distinct from the
-            # buyer, since NIC rejects an e-Waybill where Ship To GSTIN equals Bill To
-            # GSTIN. Two addresses of the same party are a Regular transaction.
-            # "URP" denotes a missing GSTIN rather than an identity, so an unregistered
-            # consignee remains distinct from an unregistered buyer.
-            # ERROR CODE: 618
-            has_different_to_address = self.ship_to.gstin != self.bill_to.gstin or self.ship_to.gstin == "URP"
+            has_different_to_address = is_distinct_ship_to_party(self.ship_to.gstin, self.bill_to.gstin)
 
         if has_different_to_address and has_different_from_address:
             transaction_type = 4
@@ -1830,7 +1826,7 @@ class EWaybillData(GSTTransactionData):
                 )
 
             def _get_sandbox_gstin(address, key):
-                if address.gstin == "URP":
+                if address.gstin == URP:
                     return address.gstin
 
                 gstin = sandbox_gstin.get((self.doc.doctype, self.doc.get("is_return") or 0))[key]
@@ -1841,24 +1837,20 @@ class EWaybillData(GSTTransactionData):
 
                 return gstin
 
-            # consignee needs a GSTIN of its own, but only where it's a different
-            # party, as it can't be the same as bill to
-            has_different_ship_to = self.ship_to.gstin not in ("URP", self.bill_to.gstin)
+            # the consignee is a different party only where it has its own GSTIN
+            has_different_ship_to = self.ship_to.gstin != self.bill_to.gstin
 
             self.bill_from.gstin = _get_sandbox_gstin(self.bill_from, 0)
             self.bill_to.gstin = _get_sandbox_gstin(self.bill_to, 1)
 
-            if not has_different_ship_to:
-                # same party as bill to, so it gets the same GSTIN
-                if self.ship_to.gstin != "URP":
-                    self.ship_to.gstin = self.bill_to.gstin
+            if self.ship_to.gstin == URP:
+                pass  # an unregistered consignee has no GSTIN to substitute
+
+            elif has_different_ship_to:
+                self.ship_to.gstin = SHIPPING_GSTIN
 
             else:
-                self.ship_to.gstin = _get_sandbox_gstin(self.ship_to, 1)
-
-                # a third GSTIN is needed where bill to has taken this one
-                if self.ship_to.gstin == self.bill_to.gstin:
-                    self.ship_to.gstin = SHIPPING_GSTIN
+                self.ship_to.gstin = self.bill_to.gstin
 
         if self.doc.get("is_return") or self.bill_to.gst_category == "SEZ":
             to_state_code = self.bill_to.state_number

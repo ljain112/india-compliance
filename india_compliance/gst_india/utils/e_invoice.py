@@ -31,14 +31,15 @@ from india_compliance.gst_india.constants import (
     GST_CATEGORIES,
     GSTIN_FORMAT,
     PORT_CODES,
+    SANDBOX_SHIP_TO,
     SERVICE_HSN_PREFIX,
     TAXABLE_GST_TREATMENTS,
+    URP,
 )
 from india_compliance.gst_india.constants.e_invoice import (
     CANCEL_REASON_CODES,
     ITEM_LIMIT,
 )
-from india_compliance.gst_india.constants.e_waybill import SANDBOX_SHIP_TO
 from india_compliance.gst_india.doctype.gst_settings.gst_settings import (
     get_e_invoice_applicability_date,
 )
@@ -47,6 +48,7 @@ from india_compliance.gst_india.utils import (
     are_goods_supplied,
     handle_server_errors,
     is_api_enabled,
+    is_distinct_ship_to_party,
     is_foreign_doc,
     is_overseas_doc,
     load_doc,
@@ -393,7 +395,7 @@ def log_and_process_e_invoice_generation(doc, result, sandbox_mode=False, messag
             "signed_invoice": result.SignedInvoice,
             "signed_qr_code": result.SignedQRCode,
             "invoice_data": invoice_data,
-            "has_ship_to_details": bool(EInvoiceData(doc).get_shipping_address()),
+            "has_ship_to_details": has_ship_to_details(doc),
             "is_generated_in_sandbox_mode": sandbox_mode,
         },
     )
@@ -502,6 +504,19 @@ def mark_e_invoice_as_cancelled(doctype: str, docname: str, values: str | dict |
     log_and_process_e_invoice_cancellation(doc, values, result, "e-Invoice marked as cancelled successfully")
 
     return send_updated_doc(doc)
+
+
+def has_ship_to_details(doc):
+    """
+    Whether the e-Invoice was generated with Ship To details.
+
+    They can't be modified for B2B and SEZ transactions, so the e-Waybill by IRN
+    relies on this to know whether to send them. ERROR CODE: 2324
+    """
+    e_invoice_data = EInvoiceData(doc)
+    e_invoice_data.set_party_address_details()
+
+    return bool(e_invoice_data.shipping_address)
 
 
 def log_e_invoice(doc, log_data):
@@ -787,9 +802,7 @@ class EInvoiceData(GSTTransactionData):
 
         Bill To - Ship To requires the consignee to be a party distinct from the buyer,
         since Ship To GSTIN can't be the same as Buyer GSTIN. Two addresses of the same
-        party are a regular transaction, with no Ship To. "URP" denotes a missing GSTIN
-        rather than an identity, so an unregistered consignee remains distinct from an
-        unregistered buyer. ERROR CODE: 2323
+        party are a regular transaction, with no Ship To. ERROR CODE: 2323
         """
         ship_to_address = (
             self.doc.port_address
@@ -800,11 +813,9 @@ class EInvoiceData(GSTTransactionData):
         if not ship_to_address or ship_to_address == self.doc.customer_address:
             return
 
-        self.set_address_gstin_map()
         shipping_address = self.get_address_details(ship_to_address)
-        billing_address = self.get_address_details(self.doc.customer_address)
 
-        if shipping_address.gstin != "URP" and shipping_address.gstin == billing_address.gstin:
+        if not is_distinct_ship_to_party(shipping_address.gstin, self.billing_address.gstin):
             return
 
         return shipping_address
@@ -854,7 +865,7 @@ class EInvoiceData(GSTTransactionData):
                 self.billing_address.update(buyer)
 
                 # consignee is a different party here, so it needs a GSTIN of its own
-                if self.shipping_address and self.shipping_address.gstin != "URP":
+                if self.shipping_address and self.shipping_address.gstin != URP:
                     self.shipping_address.update(SANDBOX_SHIP_TO)
 
                 if self.transaction_details.total_igst_amount > 0:

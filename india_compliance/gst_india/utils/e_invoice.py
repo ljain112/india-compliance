@@ -393,7 +393,7 @@ def log_and_process_e_invoice_generation(doc, result, sandbox_mode=False, messag
             "signed_invoice": result.SignedInvoice,
             "signed_qr_code": result.SignedQRCode,
             "invoice_data": invoice_data,
-            "has_ship_to_details": bool(EInvoiceData(doc).get_ship_to_address()),
+            "has_ship_to_details": bool(EInvoiceData(doc).get_shipping_address()),
             "is_generated_in_sandbox_mode": sandbox_mode,
         },
     )
@@ -781,18 +781,33 @@ class EInvoiceData(GSTTransactionData):
 
         return super().set_transporter_details()
 
-    def get_ship_to_address(self):
-        """Address the Ship To details are generated from, if the transaction has one."""
+    def get_shipping_address(self):
+        """
+        Address the Ship To details are generated from, if the transaction has one.
+
+        Bill To - Ship To requires the consignee to be a party distinct from the buyer,
+        since Ship To GSTIN can't be the same as Buyer GSTIN. Two addresses of the same
+        party are a regular transaction, with no Ship To. "URP" denotes a missing GSTIN
+        rather than an identity, so an unregistered consignee remains distinct from an
+        unregistered buyer. ERROR CODE: 2323
+        """
         ship_to_address = (
             self.doc.port_address
             if (is_foreign_doc(self.doc) and self.doc.port_address)
             else self.doc.shipping_address_name
         )
 
-        if ship_to_address == self.doc.customer_address:
+        if not ship_to_address or ship_to_address == self.doc.customer_address:
             return
 
-        return ship_to_address
+        self.set_address_gstin_map()
+        shipping_address = self.get_address_details(ship_to_address)
+        billing_address = self.get_address_details(self.doc.customer_address)
+
+        if shipping_address.gstin != "URP" and shipping_address.gstin == billing_address.gstin:
+            return
+
+        return shipping_address
 
     def set_party_address_details(self):
         self.set_address_gstin_map()
@@ -803,23 +818,9 @@ class EInvoiceData(GSTTransactionData):
         )
         self.company_address = self.get_address_details(self.doc.company_address, validate_gstin=True)
 
-        ship_to_address = self.get_ship_to_address()
-
         # Defaults
-        self.shipping_address = None
+        self.shipping_address = self.get_shipping_address()
         self.dispatch_address = None
-
-        if ship_to_address:
-            shipping_address = self.get_address_details(ship_to_address)
-
-            # Bill To - Ship To requires the consignee to be a party distinct from the
-            # buyer, since Ship To GSTIN can't be the same as Buyer GSTIN. Two
-            # addresses of the same party are a regular transaction, with no Ship To.
-            # "URP" denotes a missing GSTIN rather than an identity, so an unregistered
-            # consignee remains distinct from an unregistered buyer.
-            # ERROR CODE: 2323
-            if shipping_address.gstin != self.billing_address.gstin or shipping_address.gstin == "URP":
-                self.shipping_address = shipping_address
 
         if self.doc.dispatch_address_name and self.doc.company_address != self.doc.dispatch_address_name:
             self.dispatch_address = self.get_address_details(self.doc.dispatch_address_name)

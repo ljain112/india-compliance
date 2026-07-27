@@ -1721,7 +1721,9 @@ class EWaybillData(GSTTransactionData):
         if has_different_to_address:
             self.ship_to = self.get_address_details(address.ship_to)
 
-            # GSTIN. Two addresses of with same gstin are a Regular transaction.
+            # Bill To - Ship To requires the consignee to be a party distinct from the
+            # buyer, since NIC rejects an e-Waybill where Ship To GSTIN equals Bill To
+            # GSTIN. Two addresses of the same party are a Regular transaction.
             # "URP" denotes a missing GSTIN rather than an identity, so an unregistered
             # consignee remains distinct from an unregistered buyer.
             # ERROR CODE: 618

@@ -19,6 +19,7 @@ from frappe.utils import (
     cint,
     cstr,
     get_datetime,
+    get_datetime_in_timezone,
     get_last_day,
     get_link_to_form,
     get_quarter_start,
@@ -436,6 +437,13 @@ def is_overseas_transaction(doctype, gst_category, place_of_supply):
         return is_foreign_transaction(gst_category, place_of_supply)
 
     return gst_category == "Overseas"
+
+
+def getdate_in_ist():
+    """Return today's date in IST, as GST rules are evaluated there rather than
+    in whatever timezone the site happens to be configured with.
+    """
+    return getdate(get_datetime_in_timezone(TIMEZONE))
 
 
 def is_foreign_doc(doc):

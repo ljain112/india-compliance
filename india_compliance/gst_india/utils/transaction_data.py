@@ -21,6 +21,7 @@ from india_compliance.gst_india.overrides.transaction import _validate_hsn_codes
 from india_compliance.gst_india.utils import (
     get_gst_uom,
     get_validated_country_code,
+    getdate_in_ist,
     validate_invoice_number,
     validate_pincode,
 )
@@ -260,7 +261,7 @@ class GSTTransactionData:
         validate_invoice_number(self.doc)
         posting_date = getdate(self.doc.posting_date)
 
-        if posting_date > getdate():
+        if posting_date > getdate_in_ist():
             frappe.throw(
                 msg=_("Posting Date cannot be greater than Today's Date"),
                 title=_("Invalid Data"),

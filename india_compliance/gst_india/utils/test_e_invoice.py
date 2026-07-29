@@ -1,8 +1,10 @@
 import json
 import re
+from datetime import datetime, timezone
 
 import frappe
 import responses
+import time_machine
 from erpnext.controllers.sales_and_purchase_return import make_return_doc
 from frappe.tests import IntegrationTestCase, change_settings
 from frappe.utils import add_to_date, get_datetime, getdate, now_datetime
@@ -315,6 +317,51 @@ class TestEInvoice(EInvoiceTestMixin, IntegrationTestCase):
             frappe.flags.bypass_auth = False
 
         self.assertIn("GSTIN -29AAACI1195H2ZH is inactive or cancelled", str(cm.exception))
+
+    @responses.activate
+    @change_settings(
+        "GST Settings",
+        {"e_invoice_reporting_time_limit_days": 30, "e_invoice_applicable_from": "2026-01-01"},
+    )
+    def test_e_invoice_reporting_time_limit_is_enforced_in_ist(self):
+        """NIC enforces the reporting time limit in IST, whatever the site's timezone."""
+        si = create_sales_invoice(is_in_state=True, do_not_submit=True)
+        si.set_posting_time = 1
+        si.posting_date = "2026-07-01"  # deadline is 2026-07-31
+        si.submit()
+
+        def set_time_zone(time_zone):
+            frappe.db.set_single_value("System Settings", "time_zone", time_zone)
+            frappe.clear_cache()
+
+        self.addCleanup(set_time_zone, frappe.db.get_single_value("System Settings", "time_zone"))
+        set_time_zone("UTC")
+
+        # 2026-08-01 00:00 IST, so the limit has passed in India but not on a UTC site
+        with time_machine.travel(datetime(2026, 7, 31, 18, 30, tzinfo=timezone.utc), tick=False):
+            self.assertRaisesRegex(
+                frappe.ValidationError,
+                "reporting time limit",
+                generate_e_invoice,
+                si.name,
+            )
+
+    @change_settings("GST Settings", {"e_invoice_applicable_from": "2026-01-01"})
+    def test_posting_date_is_validated_in_ist(self):
+        """An invoice dated today in India isn't future dated, whatever the site's timezone."""
+
+        def set_time_zone(time_zone):
+            frappe.db.set_single_value("System Settings", "time_zone", time_zone)
+            frappe.clear_cache()
+
+        self.addCleanup(set_time_zone, frappe.db.get_single_value("System Settings", "time_zone"))
+        set_time_zone("Pacific/Honolulu")  # UTC-10, so still on the previous day
+
+        # 2026-07-29 11:30 IST, while Honolulu is still on 2026-07-28
+        with time_machine.travel(datetime(2026, 7, 29, 6, 0, tzinfo=timezone.utc), tick=True):
+            si = create_sales_invoice(is_in_state=True, set_posting_time=1, posting_date="2026-07-29")
+
+            EInvoiceData(si).get_data()
 
     @responses.activate
     def test_generate_e_invoice_with_goods_item(self):

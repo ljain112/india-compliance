@@ -44,6 +44,7 @@ from india_compliance.gst_india.doctype.gst_settings.gst_settings import (
 from india_compliance.gst_india.overrides.transaction import validate_mandatory_fields
 from india_compliance.gst_india.utils import (
     are_goods_supplied,
+    getdate_in_ist,
     handle_server_errors,
     is_api_enabled,
     is_foreign_doc,
@@ -135,7 +136,7 @@ def generate_e_invoice(docname: str, throw: bool = True, force: bool = False):
         ):
             raise GSPServerError
 
-        if settings.e_invoice_reporting_time_limit_days and getdate() > add_to_date(
+        if settings.e_invoice_reporting_time_limit_days and getdate_in_ist() > add_to_date(
             doc.posting_date, days=settings.e_invoice_reporting_time_limit_days
         ):
             frappe.throw(

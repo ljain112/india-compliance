@@ -162,7 +162,7 @@ def update_gl_for_advance_gst_reversal(gl_dict, doc, via_reconciliation=False):
         return
 
     for row in doc.get("references"):
-        if row.reference_doctype not in ("Sales Invoice", "Journal Entry"):
+        if row.reference_doctype not in ("Sales Invoice", "Journal Entry", "Payment Entry"):
             continue
 
         gl_dict.extend(_get_gl_for_advance_gst_reversal(doc, row, via_reconciliation))
@@ -218,10 +218,15 @@ def _get_gl_for_advance_gst_reversal(payment_entry, reference_row, via_reconcili
 
         return gl_dicts
 
-    outstanding_amount = reference_row.outstanding_amount
-    if via_reconciliation:
-        # add back allocated_amount to outstanding_amount for comparison
-        outstanding_amount += reference_row.allocated_amount
+    if reference_row.reference_doctype == "Payment Entry":
+        outstanding_amount = frappe.db.get_value(
+            "Payment Entry", reference_row.reference_name, "unallocated_amount"
+        )
+    else:
+        outstanding_amount = reference_row.outstanding_amount
+        if via_reconciliation:
+            # add back allocated_amount to outstanding_amount for comparison
+            outstanding_amount += reference_row.allocated_amount
 
     total_allocation = total_amount + reference_row.allocated_amount
     excess_allocation = total_allocation - outstanding_amount

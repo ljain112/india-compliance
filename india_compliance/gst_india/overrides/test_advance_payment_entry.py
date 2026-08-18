@@ -396,6 +396,66 @@ class TestAdvancePaymentEntry(IntegrationTestCase):
             ],
         )
 
+    def test_advance_refund_reverses_tax_with_the_principal(self):
+        """Refunding an advance in full must leave nothing behind: the 590 received was 500 of
+        advance plus 90 of GST, so paying it back releases both. The allocation was already netted
+        that way, but no reversal was booked for a Payment Entry reference -- so the customer was
+        left owing the 90 they had been refunded, and the GST stayed payable on a supply that never
+        happened."""
+        payment_doc = self._create_payment_entry()  # 500 + 90 GST, 590 received
+        refund_doc = create_transaction(
+            doctype="Payment Entry",
+            payment_type="Pay",
+            mode_of_payment="Cash",
+            company_address="_Test Indian Registered Company-Billing",
+            party_type="Customer",
+            party="_Test Registered Customer",
+            customer_address="_Test Registered Customer-Billing",
+            paid_from="Cash - _TIRC",
+            paid_amount=590,
+            do_not_save=True,
+        )
+        refund_doc.setup_party_account_field()
+        refund_doc.set_missing_values()
+        refund_doc.set_exchange_rate()
+        refund_doc.received_amount = refund_doc.paid_amount
+        refund_doc.save()
+        refund_doc.submit()
+
+        # the counterpart is a Payment Entry, which has no `customer` -- reconcile it directly
+        pr = frappe.get_doc("Payment Reconciliation")
+        pr.company = "_Test Indian Registered Company"
+        pr.party_type = "Customer"
+        pr.party = "_Test Registered Customer"
+        pr.receivable_payable_account = "Debtors - _TIRC"
+        pr.get_unreconciled_entries()
+        pr.allocate_entries(
+            frappe._dict(
+                {
+                    "invoices": [r.as_dict() for r in pr.invoices if r.invoice_number == refund_doc.name],
+                    "payments": [r.as_dict() for r in pr.payments if r.reference_name == payment_doc.name],
+                }
+            )
+        )
+        pr.allocation[0].allocated_amount = 590
+        pr.reconcile()
+
+        payment_doc.reload()
+        row = next(r for r in payment_doc.references if r.reference_name == refund_doc.name)
+        self.assertEqual(flt(row.allocated_amount, 2), 500.0, "the advance net of its GST")
+        self.assertEqual(flt(payment_doc.unallocated_amount, 2), 0.0)
+
+        # 590 in and 590 out: the advance, the receivable and the GST all come back to nothing
+        net = {}
+        for entry in frappe.get_all(
+            "GL Entry",
+            filters={"voucher_no": ["in", (payment_doc.name, refund_doc.name)], "is_cancelled": 0},
+            fields=["account", "debit", "credit"],
+        ):
+            net[entry.account] = flt(net.get(entry.account, 0) + entry.debit - entry.credit, 2)
+
+        self.assertEqual({account: amount for account, amount in net.items() if amount}, {})
+
     def test_payment_entry_allocation_with_inclusive_tax_invoice(self):
         """
         Reconcile an advance payment (with GST) against a tax-inclusive

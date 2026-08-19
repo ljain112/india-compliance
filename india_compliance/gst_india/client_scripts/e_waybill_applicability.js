@@ -3,6 +3,10 @@ class EwaybillApplicability {
         this.frm = frm;
     }
 
+    get_company_gstin() {
+        return this.frm.doc.company_gstin;
+    }
+
     is_e_waybill_applicable(show_message = false) {
         this.frm._ewb_message_list = [];
 
@@ -11,7 +15,7 @@ class EwaybillApplicability {
         let is_ewb_applicable = true;
         let message_list = [];
 
-        if (!this.frm.doc.company_gstin) {
+        if (!this.get_company_gstin()) {
             is_ewb_applicable = false;
             message_list.push(__("Company GSTIN is not set. Ensure it's set in Company Address."));
         }
@@ -31,9 +35,13 @@ class EwaybillApplicability {
         return is_ewb_applicable;
     }
 
+    get_items() {
+        return india_compliance.get_items(this.frm.doc);
+    }
+
     has_goods_item(is_ewb_applicable, message_list) {
         let has_goods_item = false;
-        for (const item of this.frm.doc.items) {
+        for (const item of this.get_items()) {
             if (item.gst_hsn_code && !item.gst_hsn_code.startsWith("99") && item.qty !== 0) {
                 has_goods_item = true;
                 break;

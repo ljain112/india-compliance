@@ -597,6 +597,29 @@ Object.assign(india_compliance, {
         return frappe.boot.indian_registered_companies?.includes(company);
     },
 
+    set_address_display_events(doctype) {
+        const event_fields = ["bill_from_address", "bill_to_address", "ship_from_address", "ship_to_address"];
+
+        const events = Object.fromEntries(
+            event_fields.map((field) => [
+                field,
+                (frm) => {
+                    erpnext.utils.get_address_display(frm, field, `${field}_display`, false);
+                },
+            ]),
+        );
+
+        frappe.ui.form.on(doctype, events);
+    },
+
+    get_items_fieldname(doctype) {
+        return "items";
+    },
+
+    get_items(doc) {
+        return doc[this.get_items_fieldname(doc.doctype)] || [];
+    },
+
     get_inward_subcategory_options(sub_section) {
         return Object.values(INWARD_SECTION_MAPPING[sub_section] || {}).flat();
     },

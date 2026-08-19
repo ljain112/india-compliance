@@ -11,7 +11,7 @@ from india_compliance.gst_india.overrides.transaction import (
     ItemGSTDetails,
     ItemGSTTreatment,
 )
-from india_compliance.gst_india.utils import get_all_gst_accounts
+from india_compliance.gst_india.utils import get_all_gst_accounts, get_items
 
 
 class CustomItemGSTDetails(ItemGSTDetails):
@@ -40,8 +40,8 @@ class CustomItemGSTDetails(ItemGSTDetails):
 
 def update_gst_details(doc, method=None):
     # TODO: add item tax template validation post exclude from GST
-    ItemGSTTreatment().set(doc)
-    CustomItemGSTDetails().update(doc)
+    ItemGSTTreatment(doc).set()
+    CustomItemGSTDetails(doc).update()
 
 
 @frappe.whitelist()
@@ -67,6 +67,10 @@ class CustomTaxController:
 
         self.doc = doc
         self.field_map = field_map or {}
+
+    @property
+    def _items(self):
+        return get_items(self.doc)
 
     def set_taxes_and_totals(self):
         self.set_item_wise_tax_rates()
@@ -110,7 +114,7 @@ class CustomTaxController:
         return taxes
 
     def update_item_taxable_value(self):
-        for item in self.doc.get("items"):
+        for item in self._items:
             item.taxable_value = self.get_value("amount", item)
 
     def update_tax_amount(self):
@@ -175,7 +179,7 @@ class CustomTaxController:
         If item_name and tax_name are not passed, all items and taxes are returned.
 
         """
-        items = self.doc.get("items") or []
+        items = self._items
         taxes = self.doc.get("taxes") or []
 
         if item_name:
@@ -191,14 +195,14 @@ class CustomTaxController:
             item_wise_tax_rates = json.loads(item_wise_tax_rates)
 
         tax_amount = 0
-        for item in self.doc.get("items"):
+        for item in self._items:
             multiplier = item.qty if charge_type == "On Item Quantity" else item.taxable_value / 100
             tax_amount += flt(item_wise_tax_rates.get(item.name, 0)) * multiplier
 
         return tax_amount
 
     def calculate_total_taxable_value(self):
-        return sum([item.taxable_value for item in self.doc.get("items")])
+        return sum([item.taxable_value for item in self._items])
 
     def get_value(self, field, doc=None, default=0):
         doc = doc or self.doc

@@ -5,7 +5,12 @@ india_compliance.taxes_controller = class TaxesController {
     constructor(frm, field_map) {
         this.frm = frm;
         this.field_map = field_map || {};
+        this.items_field = india_compliance.get_items_fieldname(frm.doctype);
         this.setup();
+    }
+
+    get_items() {
+        return india_compliance.get_items(this.frm.doc);
     }
 
     setup() {
@@ -32,7 +37,7 @@ india_compliance.taxes_controller = class TaxesController {
     }
 
     setup_queries() {
-        this.frm.set_query("item_tax_template", "items", (doc, cdt, cdn) => {
+        this.frm.set_query("item_tax_template", this.items_field, (doc, cdt, cdn) => {
             return erpnext.TransactionController.prototype.set_query_for_item_tax_template(doc, cdt, cdn);
         });
 
@@ -95,7 +100,7 @@ india_compliance.taxes_controller = class TaxesController {
 
         taxes.forEach((tax) => {
             const item_wise_tax_rates = JSON.parse(tax.item_wise_tax_rates || "{}");
-            (this.frm.doc.items || []).forEach((item) => {
+            this.get_items().forEach((item) => {
                 if (item.item_tax_template) return;
                 item_wise_tax_rates[item.name] = tax.rate;
             });
@@ -141,7 +146,7 @@ india_compliance.taxes_controller = class TaxesController {
         }
 
         row.taxable_value = amount;
-        this.frm.refresh_field("items");
+        this.frm.refresh_field(this.items_field);
     }
 
     async update_tax_amount() {
@@ -195,7 +200,7 @@ india_compliance.taxes_controller = class TaxesController {
 
         const item_wise_tax_rates = JSON.parse(tax_row.item_wise_tax_rates || "{}");
         return (
-            (this.frm.doc.items || []).reduce((total, item) => {
+            this.get_items().reduce((total, item) => {
                 let multiplier =
                     tax_row.charge_type === "On Item Quantity" ? item.qty : item.taxable_value / 100;
                 return total + multiplier * (item_wise_tax_rates[item.name] || tax_row.rate);
@@ -205,7 +210,7 @@ india_compliance.taxes_controller = class TaxesController {
 
     calculate_total_taxable_value() {
         return (
-            (this.frm.doc.items || []).reduce((total, item) => {
+            this.get_items().reduce((total, item) => {
                 return total + item.taxable_value;
             }, 0) || 0
         );

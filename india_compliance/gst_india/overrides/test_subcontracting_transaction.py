@@ -23,6 +23,7 @@ from erpnext.subcontracting.doctype.subcontracting_order.test_subcontracting_ord
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_to_date, getdate, now_datetime
 
+from india_compliance.gst_india.utils import get_items_fieldname
 from india_compliance.gst_india.utils.e_waybill import mark_e_waybill_as_generated
 from india_compliance.gst_india.utils.taxes_controller import (
     CustomTaxController,
@@ -674,3 +675,7 @@ class TestCustomTaxController(FrappeTestCase):
         echoed = frappe.response.docs[0]
         edited_row = next(tax for tax in echoed.taxes if tax.name == edited_tax)
         self.assertEqual(edited_row.get("item_wise_tax_rates"), "{}")
+
+    def test_get_items_fieldname_defaults_to_items(self):
+        self.assertEqual(get_items_fieldname("Sales Invoice"), "items")
+        self.assertEqual(get_items_fieldname("Subcontracting Order"), "items")

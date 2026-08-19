@@ -1443,7 +1443,7 @@ class TestTransaction(FrappeTestCase):
         for item in doc.items:
             item.taxable_value = None
 
-        ItemGSTDetails().update(doc)
+        ItemGSTDetails(doc).update()
 
     def test_none_tax_amount_after_discount_amount(self):
         """
@@ -1462,7 +1462,7 @@ class TestTransaction(FrappeTestCase):
             tax.tax_amount_after_discount_amount = None
             tax.base_tax_amount_after_discount_amount = None
 
-        ItemGSTDetails().update(doc)
+        ItemGSTDetails(doc).update()
 
     @change_settings("GST Settings", {"enable_overseas_transactions": 1})
     def test_overseas_resave_with_non_gst_item_does_not_raise(self):

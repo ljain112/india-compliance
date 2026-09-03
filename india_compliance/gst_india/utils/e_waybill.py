@@ -790,7 +790,24 @@ def generate_pending_e_waybills():
 def fetch_e_waybill_data(*, doctype: str, docname: str, attach: bool = False, force: bool = False):
     """Permission check not required as load_doc checks permissions."""
     doc = load_doc(doctype, docname, "write" if attach else "print")
-    log = frappe.get_doc("e-Waybill Log", doc.ewaybill)
+
+    if log_name := frappe.db.exists("e-Waybill Log", doc.ewaybill):
+        log = frappe.get_doc("e-Waybill Log", log_name)
+    else:
+        # e-Waybill Log is created in a background job, which can be lost before it
+        # runs (eg: bench restart). Recreate it, since the e-Waybill is already generated.
+        log = _log_e_waybill(
+            doc,
+            {
+                "e_waybill_number": doc.ewaybill,
+                "reference_doctype": doc.doctype,
+                "reference_name": doc.name,
+                "is_generated_in_sandbox_mode": frappe.get_cached_value(
+                    "GST Settings", "GST Settings", "sandbox_mode"
+                ),
+            },
+        )
+
     if not log.is_latest_data or force:
         _fetch_e_waybill_data(doc, log)
 
@@ -812,6 +829,7 @@ def _fetch_e_waybill_data(doc, log):
         {
             "data": frappe.as_json(result, indent=4),
             "is_latest_data": 1,
+            "created_on": parse_datetime(result.get("ewayBillDate"), day_first=True),
             "valid_upto": parse_datetime(result.get("validUpto"), day_first=True),
         }
     )
@@ -1015,9 +1033,7 @@ def log_and_process_e_waybill(doc, log_data, fetch=False, comment=None):
     update_onload(doc, "e_waybill_info", log_data)
 
 
-def _log_and_process_e_waybill(doc, log_data, fetch=False, comment=None):
-    ### Log e-Waybill
-
+def _log_e_waybill(doc, log_data, comment=None):
     #  fallback to e-Waybill number to avoid duplicate entry error
     log_name = log_data.pop("name", log_data.get("e_waybill_number"))
     try:
@@ -1038,6 +1054,14 @@ def _log_and_process_e_waybill(doc, log_data, fetch=False, comment=None):
     if log.is_cancelled:
         delete_file(doc, get_pdf_filename(log.name))
         publish_pdf_update(doc, pdf_deleted=True)
+
+    return log
+
+
+def _log_and_process_e_waybill(doc, log_data, fetch=False, comment=None):
+    ### Log e-Waybill
+
+    log = _log_e_waybill(doc, log_data, comment)
 
     ### Fetch Data
 

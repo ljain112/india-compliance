@@ -240,7 +240,29 @@ class TestEWaybill(IntegrationTestCase):
         si = self.create_sales_invoice_for("goods_item_with_ewaybill")
         self._generate_e_waybill(si.name)
 
+        si.reload()
         fetch_e_waybill_data(doctype="Sales Invoice", docname=si.name, attach=False)
+
+        get_e_waybill_result = self.e_waybill_test_data.get_e_waybill.get("response_data").get("result")
+        expected_log_data = {
+            "e_waybill_number": si.ewaybill,
+            "reference_doctype": "Sales Invoice",
+            "reference_name": si.name,
+            "is_latest_data": 1,
+            "created_on": parse_datetime(get_e_waybill_result.get("ewayBillDate"), day_first=True),
+            "valid_upto": parse_datetime(get_e_waybill_result.get("validUpto"), day_first=True),
+        }
+
+        self.assertDocumentEqual(expected_log_data, frappe.get_doc("e-Waybill Log", si.ewaybill))
+
+        # e-Waybill Log is created in a background job, which can be lost before it runs.
+        # It should be recreated on fetch, since the e-Waybill is already generated.
+        frappe.delete_doc("e-Waybill Log", si.ewaybill, force=True)
+        self.assertFalse(frappe.db.exists("e-Waybill Log", si.ewaybill))
+
+        fetch_e_waybill_data(doctype="Sales Invoice", docname=si.name, attach=False)
+
+        self.assertDocumentEqual(expected_log_data, frappe.get_doc("e-Waybill Log", si.ewaybill))
 
     @responses.activate
     def test_credit_note_e_waybill(self):

@@ -192,7 +192,7 @@ def _extract_address_lines(address):
     return address_line1, address_line2
 
 
-def fetch_gstin_status(*, gstin=None, doc=None, throw=True):
+def fetch_gstin_status(*, gstin=None, doc=None, throw=True, sync=False):
     """
     Fetch GSTIN status from E-Invoice API or Public API
 
@@ -200,6 +200,8 @@ def fetch_gstin_status(*, gstin=None, doc=None, throw=True):
 
     :param gstin: GSTIN to fetch status for
     :param throw: Raise exception if error occurs (used for user initiated requests)
+    :param sync: Sync GSTIN details on the e-Invoice Portal from the GST Common Portal.
+        Always uses the e-Invoice API. Only for manually initiated requests.
     """
     gstin = validate_gstin(gstin)
 
@@ -210,13 +212,30 @@ def fetch_gstin_status(*, gstin=None, doc=None, throw=True):
         gst_settings = frappe.get_cached_doc("GST Settings", None)
         company_gstin = gst_settings.get_gstin_with_credentials(service="e-Invoice")
 
-        if throw or not company_gstin:
+        if sync and not company_gstin:
+            frappe.throw(
+                _(
+                    "Please enable e-Invoicing and set e-Waybill / e-Invoice credentials in"
+                    " GST Settings to update GSTIN on the e-Invoice Portal"
+                )
+            )
+
+        if not sync and (throw or not company_gstin):
             response = PublicAPI(doc).get_gstin_info(gstin)
             return get_formatted_response_for_status(response)
 
         doc = doc or frappe._dict()
         doc.company_gstin = company_gstin
-        response = EInvoiceAPI.create(doc=doc).get_gstin_info(gstin)
+        api = EInvoiceAPI.create(doc=doc)
+        response = api.sync_gstin_info(gstin) if sync else api.get_gstin_info(gstin)
+
+        # Invalid GSTIN errors are ignored by the API and hence returned without status
+        if sync and not response.Status:
+            frappe.throw(
+                response.get("error_message")
+                or _("Could not update GSTIN {0} on the e-Invoice Portal").format(gstin)
+            )
+
         return frappe._dict(
             {
                 "gstin": gstin,

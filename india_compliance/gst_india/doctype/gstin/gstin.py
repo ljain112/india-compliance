@@ -37,14 +37,33 @@ class GSTIN(Document):
         Permission check not required as GSTIN details are public and user has access to doc.
         """
         # hard refresh will always use public API
-        create_or_update_gstin_status(self.gstin, throw=True, doc=self)
+        response = fetch_gstin_status(gstin=self.gstin, doc=self, throw=False, sync=True)
+        self.update(response)
+        self.save(ignore_permissions=True)
 
     @frappe.whitelist()
     def update_transporter_id_status(self):
         """
         Permission check not required as GSTIN details are public and user has access to doc.
         """
-        create_or_update_gstin_status(self.gstin, is_transporter_id=True, doc=self)
+        # status is only suggestive, and is not fetched if e-Waybill API is unavailable
+        if not (response := fetch_transporter_id_status(self.gstin, doc=self, throw=False)):
+            return
+
+        self.update(response)
+        self.save(ignore_permissions=True)
+
+    @frappe.whitelist()
+    def update_gstin_on_e_invoice_portal(self):
+        """
+        Sync GSTIN details on the e-Invoice Portal from the GST Common Portal, since the
+        e-Invoice Portal can have outdated details.
+
+        Permission check not required as GSTIN details are public and user has access to doc.
+        """
+        response = fetch_gstin_status(gstin=self.gstin, doc=self, throw=False, sync=True)
+        self.update(response)
+        self.save(ignore_permissions=True)
 
 
 def get_gstr_1_filed_upto(gstin):

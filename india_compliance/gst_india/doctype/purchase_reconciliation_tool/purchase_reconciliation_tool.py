@@ -377,7 +377,7 @@ class PurchaseReconciliationTool(Document):
         )
 
         if not filters.show_matched:
-            query = query.where(PI.name.notin(PurchaseInvoice.query_matched_purchase_invoice()))
+            query = query.where(PI.name.notin(PurchaseInvoice.query_matched()))
 
         return get_formatted_options(query.run(as_dict=True))
 
@@ -408,7 +408,7 @@ class PurchaseReconciliationTool(Document):
         )
 
         if not filters.show_matched:
-            query = query.where(BOE.name.notin(BillOfEntry.query_matched_bill_of_entry()))
+            query = query.where(BOE.name.notin(BillOfEntry.query_matched()))
 
         return get_formatted_options(query.run(as_dict=True))
 
@@ -421,7 +421,7 @@ class PurchaseReconciliationTool(Document):
         )
 
         if not filters.show_matched:
-            query = query.where(ISD.name.notin(ISDInvoice.query_match_isd_invoices()))
+            query = query.where(ISD.name.notin(ISDInvoice.query_matched()))
 
         return get_formatted_options(query.run(as_dict=True))
 

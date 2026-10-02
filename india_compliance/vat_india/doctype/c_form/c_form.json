@@ -81,7 +81,7 @@
   },
   {
    "fieldname": "state",
-   "fieldtype": "Data",
+   "fieldtype": "Autocomplete",
    "label": "State",
    "reqd": 1
   },
@@ -118,7 +118,7 @@
  "is_submittable": 1,
  "links": [],
  "max_attachments": 3,
- "modified": "2024-03-29 11:36:18.565227",
+ "modified": "2026-10-02 18:58:07.328169",
  "modified_by": "Administrator",
  "module": "VAT India",
  "name": "C-Form",
@@ -126,24 +126,41 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "email": 1,
+   "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
    "role": "Accounts User",
    "share": 1,
+   "submit": 1,
    "write": 1
   },
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
+   "delete": 1,
    "email": 1,
+   "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
    "role": "Accounts Manager",
    "share": 1,
+   "submit": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Auditor"
   },
   {
    "permlevel": 1,
@@ -152,6 +169,7 @@
    "role": "All"
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],

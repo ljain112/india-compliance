@@ -6,25 +6,17 @@
 
 frappe.ui.form.on("C-Form", {
     setup(frm) {
-        frm.fields_dict.invoices.grid.get_field("invoice_no").get_query = function (doc) {
-            return {
-                filters: {
-                    docstatus: 1,
-                    customer: doc.customer,
-                    company: doc.company,
-                    c_form_applicable: "Yes",
-                    c_form_no: "",
-                },
-            };
-        };
+        frm.set_query("invoice_no", "invoices", (doc) => ({
+            query: "india_compliance.vat_india.doctype.c_form.c_form.get_eligible_invoices",
+            filters: {
+                customer: doc.customer,
+                company: doc.company,
+            },
+        }));
+    },
 
-        frm.fields_dict.state.get_query = function () {
-            return {
-                filters: {
-                    country: "India",
-                },
-            };
-        };
+    refresh(frm) {
+        frm.get_field("state").set_data(frappe.boot.india_state_options || []);
     },
 });
 
